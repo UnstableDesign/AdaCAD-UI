@@ -344,7 +344,7 @@ export class AppComponent implements OnInit{
     }
   
      let loom_util = getLoomUtilByType(loom_settings.type);
-      return loom_util.computeLoomFromDrawdown(draft.drawdown, loom_settings)
+      return loom_util.computeLoomFromDrawdown(draft.drawdown, null, loom_settings)
       .then(loom => {
         return this.createNewDraftOnMixer(draft, loom, loom_settings)})
       .then(draftid => {

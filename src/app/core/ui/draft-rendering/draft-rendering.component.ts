@@ -712,8 +712,7 @@ export class DraftRenderingComponent implements OnInit {
         var val  = false;
         
         if (this.canvases.drawdown == null || !currentPos) { return; }
-        
-        
+              
         
         if(hasCell(draft.drawdown, currentPos.i, currentPos.j)){
           

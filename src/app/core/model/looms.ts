@@ -2,13 +2,42 @@
 import { getCellValue, setCellValue } from "./cell";
 import { Draft, Drawdown, Interlacement, InterlacementVal, Loom, LoomSettings, LoomUtil } from "./datatypes";
 import { createBlankDrawdown, warps, wefts } from "./drafts";
+import { Sequence } from "./sequence";
 import utilInstance from "./util";
 
 
 /*********** GENERIC FUNCTIONS RELATING TO LOOMS AND LOOM UTILS ************/
 
+export const initLoom = (warps: number, wefts: number) : Loom => {
+  
+  const loom: Loom = {
+    threading: [],
+    treadling: [],
+    tieup: []
+  }
+
+  for(let i = 0; i < wefts; i++){
+    loom.treadling.push([]);
+  }
+
+  for(let j = 0; j < warps; j++){
+    loom.threading.push(-1);
+  }
+
+  for(let i = 0; i < wefts; i++){
+    loom.tieup[i] = [];
+    for(let j = 0; j < warps; j++){
+      loom.tieup[i].push(false);
+    }  
+  }
+  return loom;
+
+}
+
+
 export const copyLoom = (l:Loom) : Loom => {
-  if(l === undefined || l == null) return null;
+  console.log("LOOM BEING COPIED ", l)
+  if(l === undefined || l == null || l.threading == undefined || l.tieup == undefined || l.treadling == undefined) return null;
   const copy_loom  = {
     threading: l.threading.slice(),
     treadling: l.treadling.slice(),
@@ -51,15 +80,15 @@ const jacquard_utils: LoomUtil = {
     type: 'jacquard', 
     displayname: 'jacquard loom',
     dx: "draft exclusively from drawdown, disregarding any frame and treadle information",
-    computeLoomFromDrawdown: (d: Drawdown, loom_settings: LoomSettings) : Promise<Loom>  => {
+    computeLoomFromDrawdown: (d: Drawdown, l: Loom, loom_settings: LoomSettings) : Promise<Loom>  => {
       return Promise.resolve(null);
     },
     computeDrawdownFromLoom: (l: Loom) : Promise<Drawdown> => {
       return Promise.resolve(null);
     },
-    recomputeLoomFromThreadingAndDrawdown:(l:Loom, loom_settings: LoomSettings, d: Drawdown): Promise<Loom> =>{
-      return Promise.resolve(null);
-    },
+    // recomputeLoomFromThreadingAndDrawdown:(l:Loom, loom_settings: LoomSettings, d: Drawdown): Promise<Loom> =>{
+    //   return Promise.resolve(null);
+    // },
     updateThreading: (loom: Loom, ndx:InterlacementVal) => {
       return loom;
     },
@@ -100,16 +129,15 @@ const jacquard_utils: LoomUtil = {
     type: 'direct', 
     displayname: 'direct-tie or dobby loom',
     dx: "draft from drawdown or threading/tieup/treadling. Assumes you are using a direct tie and mutiple treadle assignments",
-    computeLoomFromDrawdown: (d: Drawdown, loom_settings: LoomSettings) : Promise<Loom>  => {
+    computeLoomFromDrawdown: (d: Drawdown, l: Loom,  loom_settings: LoomSettings) : Promise<Loom>  => {
         
-        const l: Loom = {
-            threading: [],
-            tieup: [],
-            treadling: []
+        if(l == null){
+          l = initLoom(warps(d), wefts(d));
         }
 
+
             //now calculate threading 
-            return generateThreading(d)
+            return generateThreading(d, l.threading)
             .then(obj => {
 
             l.threading = obj.threading.slice();
@@ -144,38 +172,38 @@ const jacquard_utils: LoomUtil = {
     computeDrawdownFromLoom: (l: Loom) : Promise<Drawdown> => {
       return computeDrawdown(l);
     },
-    recomputeLoomFromThreadingAndDrawdown:(l:Loom, loom_settings: LoomSettings, d: Drawdown): Promise<Loom> =>{
-      const new_loom: Loom = {
-        threading: l.threading.slice(),
-        tieup: [],
-        treadling: []
-    }
+    // recomputeLoomFromThreadingAndDrawdown:(l:Loom, loom_settings: LoomSettings, d: Drawdown): Promise<Loom> =>{
+    //   const new_loom: Loom = {
+    //     threading: l.threading.slice(),
+    //     tieup: [],
+    //     treadling: []
+    // }
 
   
-      //add treadling
-      for(let i = 0; i < wefts(d); i++){
-        let active_ts = [];
-        let i_pattern = d[i].slice();
-        i_pattern.forEach((cell, j) => {
-          if(getCellValue(cell) == true){
-            const frame_assignment = new_loom.threading[j];
-            if(frame_assignment !== -1){
-              active_ts.push(frame_assignment);
-            }
-          }
-        });
-        new_loom.treadling[i] = utilInstance.filterToUniqueValues(active_ts);
-      }
+    //   //add treadling
+    //   for(let i = 0; i < wefts(d); i++){
+    //     let active_ts = [];
+    //     let i_pattern = d[i].slice();
+    //     i_pattern.forEach((cell, j) => {
+    //       if(getCellValue(cell) == true){
+    //         const frame_assignment = new_loom.threading[j];
+    //         if(frame_assignment !== -1){
+    //           active_ts.push(frame_assignment);
+    //         }
+    //       }
+    //     });
+    //     new_loom.treadling[i] = utilInstance.filterToUniqueValues(active_ts);
+    //   }
 
-      const num_frames = Math.max(numFrames(l), loom_settings.frames);
-      const num_treadles = Math.max(numTreadles(l), loom_settings.treadles);
-      const dim = Math.max(num_frames, num_treadles)
+    //   const num_frames = Math.max(numFrames(l), loom_settings.frames);
+    //   const num_treadles = Math.max(numTreadles(l), loom_settings.treadles);
+    //   const dim = Math.max(num_frames, num_treadles)
 
 
-      new_loom.tieup = generateDirectTieup(dim);
-      return Promise.resolve(new_loom)
+    //   new_loom.tieup = generateDirectTieup(dim);
+    //   return Promise.resolve(new_loom)
 
-    },
+    // },
     updateThreading: (loom: Loom, ndx:InterlacementVal) => {
 
 
@@ -248,47 +276,47 @@ const jacquard_utils: LoomUtil = {
     type: 'frame', 
     displayname: 'shaft/treadle loom',
     dx: "draft from drawdown or threading/tieup/treadling. Assumes you are assigning treadles to specific frame via tieup",
-    computeLoomFromDrawdown: (d: Drawdown, loom_settings: LoomSettings) : Promise<Loom>  => {
-        
-      const loom: Loom = {
-            threading: [],
-            tieup: [],
-            treadling: []
+    computeLoomFromDrawdown: (d: Drawdown, l: Loom, loom_settings: LoomSettings) : Promise<Loom>  => {
+        console.log("COMPUTE HARNESS FORM DRAWDOWN")
+
+        if(l == null){
+            l = initLoom(warps(d), wefts(d));
         }
+
          
-        return generateThreading(d)
+        return generateThreading(d, l.threading)
           .then(threading => {
-            loom.threading = threading.threading;
+            l.threading = threading.threading;
             return generateTreadlingforFrameLoom(d)
           })
           .then(treadling => {
-            loom.treadling = treadling.treadling;
+            l.treadling = treadling.treadling;
         
-            loom.tieup = [];
-            const num_frames = Math.max(numFrames(loom), loom_settings.frames);
-            const num_treadles = Math.max(numTreadles(loom), loom_settings.treadles);
+            l.tieup = [];
+            const num_frames = Math.max(numFrames(l), loom_settings.frames);
+            const num_treadles = Math.max(numTreadles(l), loom_settings.treadles);
 
             for(let frames = 0; frames < num_frames; frames++){
-              loom.tieup.push([]);
+              l.tieup.push([]);
               for(let treadles = 0; treadles < num_treadles; treadles++){
-                loom.tieup[frames].push(false);
+                l.tieup[frames].push(false);
               }
             }
 
-            for(let i = 0; i < loom.treadling.length; i++){
-              if(loom.treadling[i].length > 0){
-                const active_treadle_id = loom.treadling[i][0];
+            for(let i = 0; i < l.treadling.length; i++){
+              if(l.treadling[i].length > 0){
+                const active_treadle_id = l.treadling[i][0];
                 const row = d[i];
                 row.forEach((cell, j) => {
                   if(getCellValue(cell) == true){
-                    const active_frame_id = loom.threading[j];
-                    loom.tieup[active_frame_id][active_treadle_id] = true;
+                    const active_frame_id = l.threading[j];
+                    l.tieup[active_frame_id][active_treadle_id] = true;
                   } 
                 });
               }
             }
 
-            return loom;
+            return l;
           })
 
       
@@ -298,44 +326,44 @@ const jacquard_utils: LoomUtil = {
     computeDrawdownFromLoom: (l: Loom) : Promise<Drawdown> => {
       return computeDrawdown(l);
     },
-    recomputeLoomFromThreadingAndDrawdown:(l:Loom, loom_settings: LoomSettings, d: Drawdown): Promise<Loom> =>{
-      const new_loom: Loom = {
-        threading: l.threading.slice(),
-        tieup: [],
-        treadling: []
-      }
+    // recomputeLoomFromThreadingAndDrawdown:(l:Loom, loom_settings: LoomSettings, d: Drawdown): Promise<Loom> =>{
+    //   const new_loom: Loom = {
+    //     threading: l.threading.slice(),
+    //     tieup: [],
+    //     treadling: []
+    //   }
      
-      return  generateTreadlingforFrameLoom(d)
-      .then(treadling => {
-        new_loom.treadling = treadling.treadling;
+    //   return  generateTreadlingforFrameLoom(d)
+    //   .then(treadling => {
+    //     new_loom.treadling = treadling.treadling;
     
-        new_loom.tieup = [];
-        const num_frames = Math.max(numFrames(l), loom_settings.frames);
-        const num_treadles = Math.max(numTreadles(l), loom_settings.treadles);
+    //     new_loom.tieup = [];
+    //     const num_frames = Math.max(numFrames(l), loom_settings.frames);
+    //     const num_treadles = Math.max(numTreadles(l), loom_settings.treadles);
 
-        for(let frames = 0; frames < num_frames; frames++){
-          new_loom.tieup.push([]);
-          for(let treadles = 0; treadles < num_treadles; treadles++){
-            new_loom.tieup[frames].push(false);
-          }
-        }
+    //     for(let frames = 0; frames < num_frames; frames++){
+    //       new_loom.tieup.push([]);
+    //       for(let treadles = 0; treadles < num_treadles; treadles++){
+    //         new_loom.tieup[frames].push(false);
+    //       }
+    //     }
 
-        for(let i = 0; i < new_loom.treadling.length; i++){
-          if(new_loom.treadling[i].length > 0){
-            const active_treadle_id = new_loom.treadling[i][0];
-            const row = d[i];
-            row.forEach((cell, j) => {
-              if(getCellValue(cell) == true){
-                const active_frame_id = new_loom.threading[j];
-                new_loom.tieup[active_frame_id][active_treadle_id] = true;
-              } 
-            });
-          }
-        }
+    //     for(let i = 0; i < new_loom.treadling.length; i++){
+    //       if(new_loom.treadling[i].length > 0){
+    //         const active_treadle_id = new_loom.treadling[i][0];
+    //         const row = d[i];
+    //         row.forEach((cell, j) => {
+    //           if(getCellValue(cell) == true){
+    //             const active_frame_id = new_loom.threading[j];
+    //             new_loom.tieup[active_frame_id][active_treadle_id] = true;
+    //           } 
+    //         });
+    //       }
+    //     }
 
-        return Promise.resolve(new_loom);
-      })
-    },
+    //     return Promise.resolve(new_loom);
+    //   })
+    // },
     updateThreading: (loom:Loom, ndx: InterlacementVal) : Loom => {
         if(ndx.val) loom.threading[ndx.j] = ndx.i;
         else loom.threading[ndx.j] = -1;
@@ -519,37 +547,69 @@ export const pasteDirectAndFrameThreading = (loom:Loom, drawdown: Drawdown, ndx:
 
 
   /**
-  * generates a threading based on the provided drawdown
+  * generates a threading based on the provided drawdown and the current threading. 
    * @param drawdown the drawdown to use 
+   * @param threading you can think of the threading as an already sparce representation of the draft. You only need to search for matches within columns that already exist in the threading. 
    * @returns an object containing the threading pattern and the number of frames used
    */
-  export const generateThreading = (drawdown: Drawdown) : Promise<{threading: Array<number>, num: number}> => {
-    let frame = -1;
-    let threading = [];
-    //always assign the origin to one
-    //threading[] = -1;
+  export const generateThreading = (drawdown: Drawdown, threading: Array<number>) : Promise<{threading: Array<number>, num: number}> => {
+
+    console.log("THREADING TO START ", threading)
+    
+    let unique_threading_vals = [];
+
+    const sparce = utilInstance.makeSparceWeftDrawdown(drawdown.slice());
+
+
+    // Using the threading as a guide, go through an place the columns cooresponding to unique frame ids into an array
+    for(let j = 0; j < threading.length; j++){
+      if(threading[j] !== -1 && unique_threading_vals.findIndex(el => el.frame === threading[j]) == -1){
+        unique_threading_vals.push(
+          {  
+            frame: threading[j], 
+            col: sparce.map(row => row[j]) 
+        })
+      }
+    }
+    console.log("UNIQUE THREADINGS ", unique_threading_vals);
+
+    
+    let max_frame: number = unique_threading_vals.reduce((acc, val) => {
+      if(val.frame > acc) acc = val.frame;
+      return;
+    }, -1)
+
 
     //progressively add new frames in the order they appear
-    for(let j = 0; j < warps(drawdown); j++){
-      const blank = utilInstance.colIsBlank(j, drawdown);
+    for(let j = 0; j < warps(sparce); j++){
+      const blank = utilInstance.colIsBlank(j, unique_threading_vals);
       if(blank) threading[j] = -1;
       else{
-      const match = utilInstance.hasMatchingColumn(j, drawdown);
-        if(match === -1 || match > j){
-          frame++;
-          threading[j] = frame;
+      const match = utilInstance.hasMatchingColumn(j, sparce, unique_threading_vals);
+        if(match === -1){
+          //add it to the next available frame
+          max_frame++;
+          threading[j] = max_frame;
+
+          //add this to the list of unique threadings
+          unique_threading_vals.push({
+            frame: max_frame,
+            col: sparce.map(row => row[j]) 
+          })
+
         }else{
           threading[j] = threading[match];
         }
       }
     }
 
-    return Promise.resolve({threading:threading, num:frame});
+    return Promise.resolve({threading:threading, num:max_frame});
 
   }
 
 
   /**
+   * TODO: Update this to FOLLOW THE SAME LOGIC AS THE THREADING
    * This function sets the treadling based on a adjusted pattern (e.g. a pattern that has been flipped based on the users selected origin point)
    * @param pattern the drawdown to use to generate the treadling
    * @returns an object containing the treadling and the total number of treadles used
@@ -557,24 +617,56 @@ export const pasteDirectAndFrameThreading = (loom:Loom, drawdown: Drawdown, ndx:
    export const generateTreadlingforFrameLoom = (pattern: Drawdown) : Promise<{treadling:Array<Array<number>>, num:number}> =>{
     let treadle = -1;
     let treadling = [];
-    //always assign the origin to one
 
-    //progressively add new frames in the order they appear
-    for(let i = 0; i < pattern.length; i++){
+    //make it sparce first
+     const sparce = utilInstance.makeSparceWarpDrawdown(pattern.slice());
 
-      const has_up = pattern[i].find(el => getCellValue(el) == true);
-      if(has_up === undefined) treadling[i] = [];
-      else{
-      const match = utilInstance.hasMatchingRow(i, pattern);
-        if(match === -1 || match > i){
-          treadle++;
-          treadling[i] = [treadle];
-        }else{
-          treadling[i] = treadling[match];
+     let unique_treadling_vals = [];
+ 
+ 
+     // Using the threading as a guide, go through an place the columns cooresponding to unique frame ids into an array
+     for(let i = 0; i < treadling.length; i++){
+       if(treadling[i] !== -1 && unique_treadling_vals.findIndex(el => el.treadle === treadling[i]) == -1){
+         unique_treadling_vals.push(
+           {  treadle: treadling[i], 
+              row: sparce[i] 
+         })
+       }
+     }
+     console.log("UNIQUE TREADLINGS ", unique_treadling_vals);
+ 
+     
+     let max_treadle: number = unique_treadling_vals.reduce((acc, val) => {
+       if(val.treadle > acc) acc = val.treadle;
+       return;
+     }, -1)
+ 
+
+
+    //progressively add new treadles in the order they appear
+    for(let i = 0; i < sparce.length; i++){
+      if(sparce[i] !== undefined){
+      const has_up = sparce[i].find(el => getCellValue(el) == true);
+        if(has_up === undefined) treadling[i] = [];
+        else{
+        const match = utilInstance.hasMatchingRow(i, sparce, unique_treadling_vals);
+          if(match === -1){
+          max_treadle++;
+            treadling[i] = [max_treadle];
+            //push this to the unique rows list; 
+            unique_treadling_vals.push({
+              treadle: max_treadle, 
+              row: sparce[i]
+            })
+          }else{
+            treadling[i] = treadling[match];
+          }   
         }
+      }else{
+        treadling[i] = [];
       }
     }
-    return Promise.resolve({treadling: treadling, num: treadle});
+    return Promise.resolve({treadling: treadling, num: max_treadle});
 
   }
 
@@ -887,7 +979,7 @@ export const isFrame = (loom_settings: LoomSettings) : boolean => {
    * returns the loom as well as the draft_id that this loom is linked with 
    * @param data 
    */
-  export const loadLoomFromFile = (loom: any, version: string, id: number) : Promise<{loom:Loom, id:number}> => {
+  export const loadLoomFromFile = (loom: any, version: string, id: number, warps: number) : Promise<{loom:Loom, id:number}> => {
 
     if(loom == null) return Promise.resolve(null);
 
@@ -901,8 +993,11 @@ export const isFrame = (loom_settings: LoomSettings) : boolean => {
     }else{
       //handle case where firebase does not save empty treadles
       //console.log("IN LOAD LOOM", loom.treadling);
-      for(let i = 0; i < loom.treadling.length; i++){
-        if(loom.treadling[i].length == 1 && loom.treadling[i][0] == -1) loom.treadling[i] = [];
+      if(loom.treadling == null || loom.treadling == undefined) loom.treadling = [];
+
+      for(let i = 0; i < warps; i++){
+        if(loom.treadling[i] == null || loom.treadling[i] == undefined) loom.treadling[i] = [];
+        else if(loom.treadling[i].length == 1 && loom.treadling[i][0] == -1) loom.treadling[i] = [];
       }
     }
 

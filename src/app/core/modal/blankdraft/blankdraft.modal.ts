@@ -47,7 +47,8 @@ export class BlankdraftModal implements OnInit {
 
   createDraftAndClose(){
     const draft: Draft = initDraftWithParams({wefts: this.wefts, warps: this.warps});
- 
+    console.log("DRAFT INIT ", draft)
+
     const loom_settings: LoomSettings = {
       treadles: this.ws.min_treadles,
       frames: this.ws.min_frames,
@@ -58,8 +59,9 @@ export class BlankdraftModal implements OnInit {
 
 
     const loom_utils = getLoomUtilByType(this.ws.type);
-    loom_utils.computeLoomFromDrawdown(draft.drawdown, loom_settings)
+    loom_utils.computeLoomFromDrawdown(draft.drawdown, null, loom_settings)
     .then((loom) => {
+      console.log("RETURNED FROM COMPUTE LOOM ", loom)
       this.dialogRef.close({draft, loom, loom_settings});
 
     })

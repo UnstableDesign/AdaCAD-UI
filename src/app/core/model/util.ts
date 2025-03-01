@@ -8,7 +8,7 @@ import { FileService } from "../provider/file.service";
 import { MaterialMap, MaterialsService } from "../provider/materials.service";
 import { SystemsService } from "../provider/systems.service";
 import { getCellValue, setCellValue } from "./cell";
-import { Point, Interlacement, Bounds, Draft, Loom, LoomSettings, Material, Cell } from "./datatypes";
+import { Point, Interlacement, Bounds, Draft, Loom, LoomSettings, Material, Cell, Drawdown } from "./datatypes";
 import { flipDraft, getDraftAsImage, getDraftName, hasCell, initDraftWithParams, isSet, warps, wefts } from "./drafts";
 import { createMaterial, setMaterialID } from "./material";
 
@@ -32,27 +32,72 @@ class Util {
       }
     }
 
+
+
+    /**
+     * looks to compact a drawdown by removing any weft rows that are blank, called prior to generate threading so it doesn't have to 
+     * search a large space
+     * @param drawdown 
+     * @returns a drawdown with equal or fewer wefts. 
+     */
+    makeSparceWeftDrawdown(drawdown: Drawdown) : Drawdown{
+
+      drawdown = drawdown.filter( (row, i) => !this.rowIsBlank(i, drawdown));
+      return drawdown;
+
+    }
+
+
+    /**
+     * looks to compact a drawdown by removing any weft rows that are blank, called prior to generate threading so it doesn't have to 
+     * search a large space
+     * @param drawdown 
+     * @returns a drawdown with equal or fewer wefts. 
+     */   
+     makeSparceWarpDrawdown(drawdown: Drawdown) : Drawdown{
+
+      let sparce = [];
+      for(let j = 0; j < drawdown[0].length; j++){
+        if(!this.colIsBlank(j, drawdown)){
+          sparce[j] = [];
+          for(let i = 0; i < drawdown.length; i++){
+            sparce[j].push(drawdown[i][j])
+          }
+        }
+      }
+      return sparce;
+
+
+    }
+
+
    /**
     * given a drawdown and a column index, return the column number of the first matching column
     * @param j 
-    * @param drawdown 
+    * @param drawdown the drawdown where we'll find column j
+    * @param unique_cols: a list of objects that link a frame with  
     * @returns the col id of the match or -1;
     */
-    hasMatchingColumn(j: number, drawdown: Array<Array<Cell>>) : number {
-        
+    hasMatchingColumn(j: number, drawdown: Array<Array<Cell>>, unique_cols: Array<{frame: number, col: Array<Cell>}>) : number {
+      
+      //strip out any blank rows and columns
+
       let unmatch = false;
-      for(let j_comp = 0; j_comp < drawdown[0].length; j_comp++){
+
+      //walk through unique columns
+      for(let ucol_ndx = 0; ucol_ndx < unique_cols.length; ucol_ndx++){
         unmatch = false;
-        if(j_comp != j){
-          for(let i = 0; i < drawdown.length && !unmatch; i++){
-            if(getCellValue(drawdown[i][j]) !== getCellValue(drawdown[i][j_comp])){
-              unmatch = true;
-            }
-          }
-          if(!unmatch){
-            return j_comp;
+
+        //walk through the drawdown column at j
+        for(let i = 0; i < drawdown.length && !unmatch; i++){
+          if(getCellValue(drawdown[i][j]) !== getCellValue(unique_cols[ucol_ndx].col[i])){
+            unmatch = true;
           }
         }
+        if(!unmatch){
+          return unique_cols[ucol_ndx].frame;
+        }
+        
       }
 
       return -1;
@@ -125,28 +170,44 @@ class Util {
   
       }
   
+     /**
+    * given a drawdown and a row index, return if the row is blank
+    * @param j 
+    * @param drawdown 
+    * @returns true or false;
+    */
+     rowIsBlank(i: number, drawdown: Array<Array<Cell>>) : boolean {
+               
+      let row = drawdown[i];
+      let ndx = row.findIndex(el => getCellValue(el) == true)
+      return (ndx == -1);
+
+    }
+
+
 
     /**
     * given a drawdown and a row index, return the row number of the first matching row
     * @param j 
     * @param drawdown 
+    * @param unique_rows we don't  need to search the whoe drawdown since the unique rows is already a sparce representation of the unique patterns. 
     * @returns the row id of the match or -1;
     */
-    hasMatchingRow(i: number, drawdown: Array<Array<Cell>>) : number {
+    hasMatchingRow(i: number, drawdown: Array<Array<Cell>>, unique_rows: Array<{treadle: number, row: Array<Cell>}>) : number {
     
     let unmatch = false;
-    for(let i_comp = 0; i_comp < drawdown.length; i_comp++){
+
+    //check through the unique rows and see if it matches any
+    for(let i_comp = 0; i_comp < unique_rows.length; i_comp++){
       unmatch = false;
-      if(i_comp != i){
-        for(let j = 0; j < drawdown[i_comp].length && !unmatch; j++){
-          if(getCellValue(drawdown[i][j]) !== getCellValue(drawdown[i_comp][j])){
+        for(let j = 0; j < drawdown[0].length && !unmatch; j++){
+          if(getCellValue(drawdown[i][j]) !== getCellValue(unique_rows[i_comp][j])){
             unmatch = true;
           }
         }
         if(!unmatch){
           return i_comp;
         }
-      }
     }
 
     return -1;

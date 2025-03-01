@@ -64,7 +64,7 @@ const  perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>) => {
 
   console.log("MAKE LOOM")
   const utils = getLoomUtilByType(loom_settings.type);
-  return utils.computeLoomFromDrawdown(draft.drawdown, loom_settings)
+  return utils.computeLoomFromDrawdown(draft.drawdown, null, loom_settings)
   .then(l => {
 
     const frames = Math.max(numFrames(l), loom_settings.frames);

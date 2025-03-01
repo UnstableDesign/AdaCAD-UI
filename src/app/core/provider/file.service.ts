@@ -116,23 +116,24 @@ export class FileService {
         if(draft_nodes == undefined) draft_nodes = [];
 
         if(draft_nodes !== undefined){
-          console.log("DRAFT NOTES IS ", draft_nodes)
 
           draft_nodes.forEach(el => {
 
             if(el.draft == undefined && el.compressed_draft !== undefined && el.compressed_draft !== null){
               draft_fns.push(loadDraftFromFile(el.compressed_draft, version, src));
               draft_elements.push(el);
+  
             }else if(el.draft !== null && el.draft !== undefined){
               draft_fns.push(loadDraftFromFile(el.draft, version, src));
               draft_elements.push(el);
             }
 
-            if(el.loom !== null && el.loom !== undefined){
-              loom_fns.push(loadLoomFromFile(el.loom, version, el.draft_id));
+            if(el.draft !== undefined && el.loom !== null && el.loom !== undefined){
+              loom_fns.push(loadLoomFromFile(el.loom, version, el.draft_id, el.draft.rowShuttleMapping.length));
               loom_elements.push(el);
             }
 
+           
          
         
           });
@@ -150,8 +151,6 @@ export class FileService {
 
           const loom = data.looms.find(loom => loom.draft_id === node.node_id);
           const draft = data.drafts.find(draft => draft.id === node.node_id);
-
-          console.log("LOADING DRAFT NODE", node, draft)
 
           const dn: DraftNodeProxy = {
             node_id: (node === undefined) ? -1 : node.node_id,
@@ -174,7 +173,7 @@ export class FileService {
             draft_fns.push(loadDraftFromFile(draft, version, 'db'));
 
             if(loom !== null && loom !== undefined){
-              loom_fns.push(loadLoomFromFile(loom, version, draft.id));
+              loom_fns.push(loadLoomFromFile(loom, version, draft.id, draft.rowShuttleMapping.length));
             }
           }
         });
@@ -289,7 +288,7 @@ export class FileService {
           draft_elements.push(el);
 
           if(el.loom !== null && el.loom !== undefined){
-            loom_fns.push(loadLoomFromFile(el.loom, version, el.compressed_draft.id));
+            loom_fns.push(loadLoomFromFile(el.loom, version, el.compressed_draft.id, el.compressed_draft.rowShuttleMapping.length));
             loom_elements.push(el);
           }
         }
@@ -529,7 +528,7 @@ export class FileService {
       //force loom type to something with shafts;
       loom_settings.type = 'frame';
       console.log("LOOM WAS NULL in saver")
-      loom = await getLoomUtilByType(loom_settings.type).computeLoomFromDrawdown(draft.drawdown, loom_settings);
+      loom = await getLoomUtilByType(loom_settings.type).computeLoomFromDrawdown(draft.drawdown, loom, loom_settings);
 
      }
 

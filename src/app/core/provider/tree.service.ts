@@ -230,7 +230,7 @@ export class TreeService {
     this.getDraftNodes().forEach(dn => {
     
       const loom_utils = getLoomUtilByType(dn.loom_settings.type);
-      loom_utils.computeLoomFromDrawdown(dn.draft.drawdown, dn.loom_settings).then(loom => {
+      loom_utils.computeLoomFromDrawdown(dn.draft.drawdown, null, dn.loom_settings).then(loom => {
         dn.loom = loom;
       });
     });
@@ -1287,7 +1287,7 @@ clearDraft(dn: DraftNode){
 
       //const loom_utils = getLoomUtilByType(loom_settings.type);
       const loom_utils = getLoomUtilByType(this.ws.type)
-      loom_fns.push(loom_utils.computeLoomFromDrawdown(el.draft.drawdown, loom_settings))
+      loom_fns.push(loom_utils.computeLoomFromDrawdown(el.draft.drawdown, null, loom_settings))
      
     });
      return Promise.all(loom_fns);
@@ -2281,7 +2281,6 @@ isValidIOTuple(io: IOTuple) : boolean {
  * @param loom_settings  the settings that should govern the loom generated
  */
   setDraftAndRecomputeLoom(id: number, temp: Draft, loom_settings: LoomSettings) : Promise<Loom> {
-    console.log("SET DRAFT AND RECOMPUTE LOOM")
 
     const dn = <DraftNode> this.getNode(id);
     let ud_name = getDraftName(temp);
@@ -2313,8 +2312,7 @@ isValidIOTuple(io: IOTuple) : boolean {
    if(dn.component !== null) (<SubdraftComponent> dn.component).draft = temp;
 
     const loom_utils = getLoomUtilByType(dn.loom_settings.type);
-    console.log("DN ", dn.loom_settings.type)
-    return loom_utils.computeLoomFromDrawdown(temp.drawdown, loom_settings)
+    return loom_utils.computeLoomFromDrawdown(temp.drawdown, null, loom_settings)
     .then(loom =>{
       dn.loom = loom;
       return Promise.resolve(loom);
