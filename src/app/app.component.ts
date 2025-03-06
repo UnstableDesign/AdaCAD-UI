@@ -9,7 +9,7 @@ import { LoadfileComponent } from './core/modal/loadfile/loadfile.component';
 import { LoginComponent } from './core/modal/login/login.component';
 import { MaterialModal } from './core/modal/material/material.modal';
 import { createCell } from './core/model/cell';
-import { Draft, DraftNode, DraftNodeProxy, FileObj, IndexedColorImageInstance, IndexedColorMediaProxy, LoadResponse, Loom, LoomSettings, NodeComponentProxy, SaveObj, TreeNode, TreeNodeProxy } from './core/model/datatypes';
+import { Draft, DraftNode, DraftNodeProxy, FileObj, IndexedColorImageInstance, IndexedColorMediaProxy, LoadResponse, Loom, LoomSettings, NodeComponentProxy, Point, SaveObj, TreeNode, TreeNodeProxy } from './core/model/datatypes';
 import { defaults, density_units, editor_modes, loom_types, origin_option_list } from './core/model/defaults';
 import { copyDraft, getDraftName, initDraftWithParams } from './core/model/drafts';
 import { copyLoom, copyLoomSettings, getLoomUtilByType } from './core/model/looms';
@@ -109,6 +109,7 @@ export class AppComponent implements OnInit{
     private media: MediaService,
     private ms: MaterialsService,
     public multiselect: MultiselectService,
+    private notes: NotesService,
     private ops: OperationService,
     public scroll: ScrollDispatcher,
     public sys_serve: SystemsService,
@@ -122,6 +123,7 @@ export class AppComponent implements OnInit{
 
     private zone: NgZone
   ){
+
 
     this.current_version = this.vers.currentVersion();
   
@@ -165,10 +167,10 @@ export class AppComponent implements OnInit{
     this.filename_form.valueChanges.forEach(el => {this.renameWorkspace(el.trim())})
 
 
-    const analytics = getAnalytics();
-    logEvent(analytics, 'onload', {
-      items: [{ uid: this.auth.uid }]
-    });
+    // const analytics = getAnalytics();
+    // logEvent(analytics, 'onload', {
+    //   items: [{ uid: this.auth.uid }]
+    // });
 
     let dialogRef = this.dialog.open(WelcomeComponent, {
       height: '400px',
@@ -187,7 +189,6 @@ export class AppComponent implements OnInit{
 
     this.recenterViews();
   }
-
 
 
   clearAll() : void{
@@ -263,7 +264,6 @@ export class AppComponent implements OnInit{
 
   toggleEditorMode(){
 
-    console.log("ON TOGGLE ", this.selected_editor_mode)
     switch(this.selected_editor_mode){
       case 'draft':
 
@@ -283,7 +283,6 @@ export class AppComponent implements OnInit{
           this.generateBlankDraftAndPlaceInMixer(obj, 'toggle');
 
         }else{
-          console.log("LOADING ", this.vs.getViewer())
           this.editor.loadDraft(this.vs.getViewer());
           this.editor.onFocus(); 
         }
@@ -460,7 +459,7 @@ export class AppComponent implements OnInit{
    * @param user 
    */
   initLoginLogoutSequence(user:User) {
-    console.log("IN LOGIN/LOGOUT ", user)
+    console.log("IN LOGIN/LOGOUT ")
     /** TODO: check also if the person is online */
 
 
@@ -588,6 +587,29 @@ export class AppComponent implements OnInit{
       this.saveFile();
     }
     ).catch(console.error);
+  }
+
+
+  /**
+   * runs code that (a) changes all loom types to jacquard and (b) sets all drafts to hidden
+   */
+  optimizeWorkspace() {
+
+    //set the defaults
+    this.ws.hide_mixer_drafts = true;
+    this.ws.type = 'jacquard';
+
+     const drafts = this.tree.getDraftNodes();
+     drafts.forEach(draft => {
+         draft.visible = false;
+        
+    })
+
+
+    this.mixer.redrawAllSubdrafts();
+
+
+
   }
 
 
@@ -934,7 +956,7 @@ onPasteSelections(){
   }
 
   openHelp() {
-    window.open('https://docs.adacad.org/docs/howtouse/getting-started/interface', '_blank');
+    window.open('https://docs.adacad.org/', '_blank');
   }
 
   openBug() {
@@ -1098,17 +1120,19 @@ async processFileData(data: FileObj) : Promise<string|void>{
   }
   
 
-  console.log("IMAGES TO LOAD ", images_to_load)
-  return this.media.loadMedia(images_to_load).then(el => {
+  return this.media.loadMediaFromFileLoad(images_to_load).then(el => {
     //2. check the op names, if any op names are old, relink the newer version of that operation. If not match is found, replaces with Rect. 
+   // console.log("REPLACE OUTDATED OPS")
     return this.tree.replaceOutdatedOps(data.ops);
   })
   .then(correctedOps => {    
     data.ops = correctedOps; 
+    //console.log(" LOAD NODES")
     return this.loadNodes(data.nodes)
   })
   .then(id_map => {
       entry_mapping = id_map;
+    //  console.log(" LOAD TREE Nodes")
       return this.loadTreeNodes(id_map, data.treenodes);
     }
   ).then(treenodes => {
@@ -1117,17 +1141,17 @@ async processFileData(data: FileObj) : Promise<string|void>{
       .filter(tn => this.tree.isSeedDraft(tn.tn.node.id))
       .map(tn => tn.entry);
     
-    const seeds: Array<{entry, id, draft, loom, loom_settings, render_colors, scale}> = seednodes
+    const seeds: Array<{entry, id, draft, loom, loom_settings, render_colors, scale, draft_visible}> = seednodes
     .map(sn =>  {
 
 
         let d:Draft =null;
         let loom:Loom = null;
         let render_colors = true;
+        let draft_visible = true;
         let scale = 1;
 
       const draft_node = data.nodes.find(node => node.node_id === sn.prev_id);
-      console.log("SEED DRAFT NODE", draft_node)
 
       let ls: LoomSettings = {
         frames: this.ws.min_frames,
@@ -1146,12 +1170,13 @@ async processFileData(data: FileObj) : Promise<string|void>{
           console.error("could not find draft with id in draft list");
         }
         else{
-          console.log("LOCATED DRAFT ", located_draft)
+          //console.log("LOCATED DRAFT ", located_draft)
           d = copyDraft(located_draft.draft)
           ls = copyLoomSettings(located_draft.loom_settings);
           loom = copyLoom(located_draft.loom);
           if(located_draft.render_colors !== undefined) render_colors = located_draft.render_colors; 
           if(located_draft.scale !== undefined) scale = located_draft.scale; 
+          if(located_draft.draft_visible !== undefined) draft_visible = located_draft.draft_visible; 
         } 
 
       }else{
@@ -1173,12 +1198,13 @@ async processFileData(data: FileObj) : Promise<string|void>{
           loom: loom,
           loom_settings: ls,
           render_colors: render_colors,
-          scale: scale
+          scale: scale,
+          draft_visible: draft_visible
           }
       
     });
 
-    const seed_fns = seeds.map(seed => this.tree.loadDraftData(seed.entry, seed.draft, seed.loom,seed.loom_settings, seed.render_colors, seed.scale));
+    const seed_fns = seeds.map(seed => this.tree.loadDraftData(seed.entry, seed.draft, seed.loom,seed.loom_settings, seed.render_colors, seed.scale, seed.draft_visible));
 
     const op_fns = data.ops.map(op => {
       const entry = entry_mapping.find(el => el.prev_id == op.node_id);
@@ -1197,6 +1223,7 @@ async processFileData(data: FileObj) : Promise<string|void>{
   })
   .then(el => {
     //delete any nodes that no longer need to exist
+
     this.tree.getDraftNodes()
     .filter(el => el.draft === null)
     .forEach(el => {
@@ -1250,6 +1277,8 @@ async processFileData(data: FileObj) : Promise<string|void>{
       (<DraftNode> node).loom_settings = np.loom_settings; 
       (<DraftNode> node).loom = copyLoom(np.loom); 
       if(np.render_colors !== undefined) (<DraftNode> node).render_colors = np.render_colors; 
+      if(np.draft_visible !== undefined) (<DraftNode> node).visible = np.draft_visible; 
+      else (<DraftNode> node).visible = !this.ws.hide_mixer_drafts;
       if(np.scale !== undefined) (<DraftNode> node).scale = np.scale; 
     })
 
@@ -1257,10 +1286,6 @@ async processFileData(data: FileObj) : Promise<string|void>{
     (<OperationComponent> op.component).updateChildren(this.tree.getNonCxnOutputs(op.id));
    })
 
-    // const dn = this.tree.getDraftNodes();
-    // dn.forEach(node => {
-    //   console.log("RES", node.draft, node.loom, node.loom_settings)
-    // })
 
     data.notes.forEach(note => {
       this.mixer.createNote(note);
@@ -1268,14 +1293,17 @@ async processFileData(data: FileObj) : Promise<string|void>{
 
 
   })
-  .then(res => {
-    // this.palette.rescale(data.scale);
+  .then(res => {    
+
     this.loading = false;
     this.updateOrigin(this.ws.selected_origin_option);
+
     this.mixer.refreshOperations();
     this.mixer.renderChange();
     this.editor.renderChange();
-  
+
+
+
     return Promise.resolve('alldone')
   })
   .catch(e => {
@@ -1339,7 +1367,6 @@ saveFile(){
 
 setDraftsViewable(val: boolean){
   this.ws.hide_mixer_drafts = val;
-  this.mixer.redrawAllSubdrafts();
 }
 
 setAdvancedOperations(val: boolean){
@@ -1461,11 +1488,6 @@ redo() {
       let comp= this.tree.getComponent(id);
       (<SubdraftComponent> comp).draftcontainer.updateName();
     }
-    
-   
-
-
-
   }
 
   renameWorkspace(name: string){
@@ -1501,13 +1523,62 @@ redo() {
     }
   }
 
+
+  zoomToFit(){
+
+    const view_window:HTMLElement = document.getElementById('scrollable-container');
+    if(view_window === null || view_window === undefined) return;
+
+
+    if(this.viewer.view_expanded){
+      this.viewer.renderChange();
+    }else if(this.selected_editor_mode == 'mixer'){
+
+      let selections = this.multiselect.getSelections();  
+
+      let node_list = (selections.length == 0) ? this.tree.getNodeIdList() : selections;
+      let note_list = (selections.length == 0) ? this.notes.getNoteIdList() : [];
+
+      const b_nodes = this.tree.getNodeBoundingBox(node_list);
+      const n_nodes =  this.notes.getNoteBoundingBox(note_list);
+      const bounds = utilInstance.mergeBounds([b_nodes, n_nodes]);
+      
+      if(bounds == null) return;
+
+      let prior = this.zs.getMixerZoom();
+      this.zs.zoomToFitMixer(bounds, view_window.getBoundingClientRect());
+      this.mixer.renderChange(prior);
+
+      //since bounds is in absolute terms (relative to the child div, we need to convert the top left into the scaled space)
+      view_window.scroll({
+        top: bounds.topleft.y*this.zs.getMixerZoom(),
+        left: bounds.topleft.x*this.zs.getMixerZoom(),
+        behavior: "instant",
+      })
+
+
+
+
+
+    } else {
+     // this.zs.zoomToFitEditor()
+      this.editor.renderChange();
+    }
+  }
+
   zoomOut(){
+
     if(this.viewer.view_expanded){
       this.zs.zoomOutViewer();
       this.viewer.renderChange();
     }else if(this.selected_editor_mode == 'mixer'){
+      const prior = this.zs.getMixerZoom();
       this.zs.zoomOutMixer();
-      this.mixer.renderChange();
+      this.mixer.renderChange(prior);
+
+
+
+
     } else {
       this.zs.zoomOutEditor()
       this.editor.renderChange();
@@ -1519,8 +1590,9 @@ redo() {
       this.zs.zoomInViewer();
       this.viewer.renderChange();
     }else if(this.selected_editor_mode == 'mixer'){
+      const prior = this.zs.getMixerZoom();
       this.zs.zoomInMixer();
-      this.mixer.renderChange();
+      this.mixer.renderChange(prior);
     } else {
       this.zs.zoomInEditor()
       this.editor.renderChange();
@@ -1563,7 +1635,8 @@ redo() {
         utilInstance.saveAsBmp(b, draft, this.ws.selected_origin_option, this.ms, this.fs)
         break;
       case 'jpg':
-        utilInstance.saveAsPrint(b, draft, true, this.ws.selected_origin_option, this.ms, this.sys_serve, this.fs)
+        let visvars = this.viewer.getVisVariables();
+        utilInstance.saveAsPrint(b, draft, visvars.use_floats, visvars.use_colors, this.ws.selected_origin_option, this.ms, this.sys_serve, this.fs)
         break;
       case 'wif':
         let loom = this.tree.getLoom(this.vs.getViewer() );

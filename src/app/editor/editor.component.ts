@@ -494,6 +494,11 @@ export class EditorComponent implements OnInit {
   renderChange(){
     //the renderer is listening for changes to scale and will redraw
     this.scale = this.zs.getEditorZoom();
+    this.weaveRef.scale = this.scale
+    // this.weaveRef.rescale(this.scale);
+
+    //we have to redraw for now so that UI div buttons line up with scaled view
+    this.redraw();
   }
         
         

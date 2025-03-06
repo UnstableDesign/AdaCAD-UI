@@ -1,6 +1,6 @@
 import { Injectable, ViewRef } from '@angular/core';
 import { boolean } from 'mathjs';
-import { BoolParam, Draft, DraftNode, DraftNodeProxy, Drawdown, DynamicOperation, IndexedColorImageInstance, IOTuple, Loom, LoomSettings, Node, NodeComponentProxy, NotationTypeParam, OpComponentProxy, Operation, OpInput, OpNode, OpParamVal, StringParam, TreeNode, TreeNodeProxy } from '../../core/model/datatypes';
+import { BoolParam, Bounds, Draft, DraftNode, DraftNodeProxy, Drawdown, DynamicOperation, IndexedColorImageInstance, IOTuple, Loom, LoomSettings, Node, NodeComponentProxy, NotationTypeParam, OpComponentProxy, Operation, OpInput, OpNode, OpParamVal, Point, StringParam, TreeNode, TreeNodeProxy } from '../../core/model/datatypes';
 import { compressDraft, copyDraft, createDraft, exportDrawdownToArray, getDraftName, initDraft, initDraftWithParams, warps, wefts } from '../../core/model/drafts';
 import { copyLoom, flipLoom, getLoomUtilByType } from '../../core/model/looms';
 import utilInstance from '../../core/model/util';
@@ -227,7 +227,6 @@ export class TreeService {
    * recomputes the value of every loom. 
    */
   updateLooms(){
-
     this.getDraftNodes().forEach(dn => {
     
       const loom_utils = getLoomUtilByType(dn.loom_settings.type);
@@ -260,7 +259,7 @@ export class TreeService {
   * @param loom the loom to associate with this node
   * @returns the created draft node and the entry associated with this
   */
-  loadDraftData(entry: {prev_id: number, cur_id: number}, draft: Draft, loom: Loom, loom_settings: LoomSettings, render_colors: boolean, scale: number) : Promise<{dn: DraftNode, entry:{prev_id: number, cur_id: number}}>{
+  loadDraftData(entry: {prev_id: number, cur_id: number}, draft: Draft, loom: Loom, loom_settings: LoomSettings, render_colors: boolean, scale: number, draft_visible: boolean) : Promise<{dn: DraftNode, entry:{prev_id: number, cur_id: number}}>{
 
     const nodes = this.nodes.filter(el => el.id === entry.cur_id);
 
@@ -303,6 +302,8 @@ export class TreeService {
    if(scale === undefined || scale === null)  (<DraftNode> nodes[0]).scale = 1;
    else (<DraftNode> nodes[0]).scale = scale;
 
+   if(draft_visible == undefined || draft_visible == null) (<DraftNode> nodes[0]).visible = true;
+   else (<DraftNode> nodes[0]).visible = draft_visible;
 
    //console.log("DRAFT NODE LOADED:",_.cloneDeep(<DraftNode>nodes[0]))
    return Promise.resolve({dn: <DraftNode> nodes[0], entry});
@@ -650,6 +651,52 @@ export class TreeService {
     return this.nodes[ndx]; 
   }
 
+
+
+  /**
+   * this function returns the smallest bounding box that can contain all of the input nodes. This function does not consider the scrolling (all measures are relative to the node parent (palette-scale-container). This means that the values will be the same no matter the scroll or the zoom. 
+   * @returns The Bounds or null (if there are no nodes with which to measure)
+   */
+  getNodeBoundingBox(node_ids: Array<number>):Bounds|null{
+
+    if(this.nodes.length == 0) return null;
+
+
+    const raw_rects= node_ids
+    .map(node => document.getElementById('scale-'+node))
+    .filter(div => div != null)
+    .map(div => { return {x: div.offsetLeft, y: div.offsetTop, width: div.offsetWidth, height: div.offsetHeight}});
+
+    const min: Point = raw_rects.reduce((acc, el) => {
+      let adj_x =  el.x;
+      let adj_y =  el.y;
+      if(adj_x < acc.x) acc.x = adj_x;
+      if(adj_y < acc.y) acc.y = adj_y;
+      return acc;
+    }, {x: 1000000, y:100000});
+
+    const max: Point = raw_rects.reduce((acc, el) => {
+      let adj_right = el.x + el.width;
+      let adj_bottom = el.y + el.height;
+      if(adj_right > acc.x) acc.x = adj_right;
+      if(adj_bottom  > acc.y) acc.y = adj_bottom;
+      return acc;
+    }, {x: 0, y:0});
+
+
+    let bounds:Bounds = {
+      topleft: {x: min.x, y: min.y},
+      width: max.x - min.x,
+      height: max.y - min.y
+    }
+
+    // console.log('BOUNDS FOR COMPONENTS', min, max, bounds)
+    return bounds;
+  
+  }
+
+
+
   getNodeIdList() : Array<number> {
     return this.nodes.map(node => node.id);
   }
@@ -800,21 +847,21 @@ export class TreeService {
     }
 
 
-    /**
-     * test if this node has just one child and that child subdraft is currently hidden 
-     * @param id 
-     * @returns a boolean 
-     */
-      opHasHiddenChild(id: number):boolean{
-          const tn: TreeNode = this.getTreeNode(id);
-          const outs = this.getNonCxnOutputs(id);
+  /**
+   * test if this node has just one child and that child subdraft is currently hidden 
+   * @param id 
+   * @returns a boolean 
+   */
+    opHasHiddenChild(id: number):boolean{
+        const tn: TreeNode = this.getTreeNode(id);
+        const outs = this.getNonCxnOutputs(id);
 
-          if(outs.length === 0) return false;
+        if(outs.length === 0) return false;
 
-          const child_id = outs.shift();
-          const sd = <SubdraftComponent> this.getComponent(child_id);
-          return !sd.draft_visible;
-      }
+        const child_id = outs.shift();
+        let child_visible = this.getDraftVisible(child_id);
+        return !child_visible;
+    }
   
     
 
@@ -1197,7 +1244,7 @@ clearDraft(dn: DraftNode){
       const id = this.createNode('draft', null, null);
       const cxn = this.createNode('cxn', null, null);
       this.addConnection(parent, i, id, 0, cxn);
-      new_draft_fns.push(this.loadDraftData({prev_id: -1, cur_id: id}, res[i], null, null, true, 1)); 
+      new_draft_fns.push(this.loadDraftData({prev_id: -1, cur_id: id}, res[i], null, null, true, 1, !this.ws.hide_mixer_drafts)); 
       update_looms.push({id: id, draft:  res[i]});
       touched.push(id);
     }
@@ -1238,7 +1285,8 @@ clearDraft(dn: DraftNode){
       const dn = <DraftNode> this.getNode(el.id);
       let loom_settings = (dn.loom_settings !== null) ? dn.loom_settings : defaults.loom_settings;
 
-      const loom_utils = getLoomUtilByType(loom_settings.type);
+      //const loom_utils = getLoomUtilByType(loom_settings.type);
+      const loom_utils = getLoomUtilByType(this.ws.type)
       loom_fns.push(loom_utils.computeLoomFromDrawdown(el.draft.drawdown, loom_settings))
      
     });
@@ -1304,9 +1352,6 @@ clearDraft(dn: DraftNode){
    
     
     return Promise.all(op_fn_list).then( out => {
-      const flat:Array<number> = out.reduce((acc, el, ndx)=>{
-        return acc.concat(el);
-      }, []);
 
       return this.getNodesWithDependenciesSatisfied();
 
@@ -1398,6 +1443,12 @@ isValidIOTuple(io: IOTuple) : boolean {
 
   getDraftNodes():Array<DraftNode>{
     return this.nodes.filter(el => el.type === 'draft').map(el => <DraftNode> el);
+  }
+
+  getDraftVisible(id: number){
+    const dn:DraftNode = <DraftNode> this.getNode(id);
+    if(dn == null) return false; 
+    return dn.visible;
   }
 
   getDrafts():Array<SubdraftComponent>{
@@ -2083,7 +2134,7 @@ isValidIOTuple(io: IOTuple) : boolean {
           draft_name: getDraftName((<DraftNode>node).draft),
           draft: null,
           compressed_draft: (this.hasParent(node.id)) ? null : compressDraft((<DraftNode>node).draft),
-          draft_visible: (node.component !== null) ? (<SubdraftComponent>node.component).draft_visible : true,
+          draft_visible:  ((<DraftNode>node).visible == undefined ) ? !this.ws.hide_mixer_drafts :  (<DraftNode>node).visible,
           loom: (loom_export === null) ? null :loom_export,
           loom_settings: node.loom_settings,
           render_colors: ((<DraftNode>node).render_colors == undefined ) ? true :  (<DraftNode>node).render_colors,
@@ -2218,6 +2269,11 @@ isValidIOTuple(io: IOTuple) : boolean {
 
   }
 
+  setDraftVisiblity(id: number, visibile: boolean ){
+    const dn = <DraftNode> this.getNode(id);
+    dn.visible = visibile;
+  }
+
 /**
  * sets a new draft and loom at node specified by id. This occures when an operation that generated a draft has been recomputed
  * @param id the node to update
@@ -2225,6 +2281,7 @@ isValidIOTuple(io: IOTuple) : boolean {
  * @param loom_settings  the settings that should govern the loom generated
  */
   setDraftAndRecomputeLoom(id: number, temp: Draft, loom_settings: LoomSettings) : Promise<Loom> {
+    console.log("SET DRAFT AND RECOMPUTE LOOM")
 
     const dn = <DraftNode> this.getNode(id);
     let ud_name = getDraftName(temp);
@@ -2256,6 +2313,7 @@ isValidIOTuple(io: IOTuple) : boolean {
    if(dn.component !== null) (<SubdraftComponent> dn.component).draft = temp;
 
     const loom_utils = getLoomUtilByType(dn.loom_settings.type);
+    console.log("DN ", dn.loom_settings.type)
     return loom_utils.computeLoomFromDrawdown(temp.drawdown, loom_settings)
     .then(loom =>{
       dn.loom = loom;

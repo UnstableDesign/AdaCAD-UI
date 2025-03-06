@@ -174,10 +174,15 @@ getVisVariables(){
 
   //when expanded, someone can set the zoom from the main zoom bar
   //this is called, then, to rescale the view
-  renderChange(){
-    this.scale = this.zs.getViewerZoom();
+  zoomChange(){
+    
+
     if(this.id == -1) return;
-    this.view_rendering.redrawAll();
+    this.scale = this.zs.getViewerZoom();
+    this.view_rendering.scale = this.scale;
+    this.view_rendering.rescale(this.scale);
+    //TO DO re-enable this but figure out where it is being called from
+    //this.drawDraft(this.id);
   }
 
   /**
@@ -203,10 +208,11 @@ getVisVariables(){
     let flags =  {
       drawdown: true, 
       use_colors: (this.vis_mode == 'color'),
-      use_floats: (this.vis_mode != 'draft'), 
+      use_floats: (this.vis_mode !== 'draft'), 
       show_loom: false
     }
 
+    //console.log("REDRAW CALLED FROM VIEW RENDERING")
     return this.view_rendering.redraw(draft, null, null, flags).then(el => {
       return Promise.resolve(true);
     })

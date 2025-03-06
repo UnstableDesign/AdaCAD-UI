@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { defaults } from '../model/defaults';
-import { ZoomProxy } from '../model/datatypes';
+import { Bounds, ZoomProxy } from '../model/datatypes';
 
 @Injectable({
   providedIn: 'root'
@@ -9,9 +9,9 @@ export class ZoomService {
   //current zoom scale
   
 
-  num_steps: number = 20;
-  zoom_min: number = .1;
-  zoom_step: number = .004;
+  num_steps: number = 30;
+  zoom_min: number = .015;
+  zoom_step: number = .002;
   zoom_table: Array<number> = [];
 
   zoom_table_ndx_mixer: number = defaults.zoom_ndx_mixer;
@@ -55,6 +55,30 @@ export class ZoomService {
   manageZoomRounding(val: number) : number {
     // if(val >= 1) return Math.floor(val);
     return Math.round(val * 1000) / 1000; 
+  }
+
+
+  /**
+   * this function takes a bounding box and the total size of the palette and updates the zoom such that the bounding box fits within the view box. 
+   * @param objs 
+   * @param viewable (the size of the current view portal) 
+   */
+  zoomToFitMixer(bounds: Bounds, viewable: {width: number, height: number}){
+
+    const w_factor = viewable.width / bounds.width;
+    const h_factor = viewable.height / bounds.height;
+    const smaller = Math.min(w_factor, h_factor)
+    this.setMixerIndexFromZoomValue(smaller);
+
+
+  }
+
+  zoomToFitEditor(){
+    
+  }
+
+  zoomToVitViewer(){
+
   }
 
 
@@ -131,6 +155,7 @@ export class ZoomService {
     }, {min: 1000000, ndx: 0})
 
     this.zoom_table_ndx_mixer=  closest.ndx;
+    // console.log("SET TO ", this.zoom_table_ndx_mixer, this.zoom_table[this.zoom_table_ndx_mixer])
 
   }
 

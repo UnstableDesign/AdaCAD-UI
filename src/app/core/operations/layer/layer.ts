@@ -44,22 +44,45 @@ const  perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>) : Pro
    let ends = utilInstance.lcm(drafts.map(el => warps(el.drawdown))) * drafts.length;
    let pics = utilInstance.lcm(drafts.map(el => warps(el.drawdown))) * drafts.length;
 
+
+  
+
+   let warp_sys_above = [];
+   let weft_sys_above = [];
    drafts.forEach((draft, ndx) => {
     let seq = new Sequence.TwoD().import(draft.drawdown);
     seq.mapToSystems([ndx], [ndx], sys_seq, sys_seq, ends, pics);
     composite.overlay(seq, false);
+    composite.placeInLayerStack([ndx],warp_sys_above, [ndx],weft_sys_above,sys_seq, sys_seq );
+    warp_sys_above.push(ndx);
+    weft_sys_above.push(ndx);
    })
-
-   let system_layer_map = sys_seq.val().map(el => {return {ws: el, layer: el}});
-   composite.layerSystems(system_layer_map, sys_seq);
 
 
     let d: Draft = initDraftFromDrawdown(composite.export());
     d.colSystemMapping =  generateMappingFromPattern(d.drawdown, sys_seq.val(),'col');
     d.rowSystemMapping =  generateMappingFromPattern(d.drawdown, sys_seq.val(),'row');
 
+    let warp_mats = [];
+    for(let j = 0; j < ends; j++){
+      let select_draft = j%drafts.length;
+      let within_draft_id = Math.floor(j/drafts.length);
+      let mat_mapping = drafts[select_draft].colShuttleMapping;
+      let mat_id =mat_mapping[within_draft_id%mat_mapping.length]
+      warp_mats.push(mat_id)
+    }
 
-
+    let weft_mats = [];
+    for(let i = 0; i < pics; i++){
+      let select_draft = i%drafts.length;
+      let within_draft_id = Math.floor(i/drafts.length);
+      let mat_mapping = drafts[select_draft].rowShuttleMapping;
+      let mat_id =mat_mapping[within_draft_id%mat_mapping.length]
+      weft_mats.push(mat_id)
+    }
+  
+  d.rowShuttleMapping =  generateMappingFromPattern(d.drawdown,weft_mats,'row');
+  d.colShuttleMapping =  generateMappingFromPattern(d.drawdown,warp_mats,'col');
   return Promise.resolve([d]);
 };   
 

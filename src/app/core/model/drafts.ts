@@ -427,7 +427,6 @@ export const createDraft = (
    */
   export const getDraftAsImage = (draft: Draft, pix_per_cell: number, floats: boolean, use_color: boolean, mats: Array<Material>) : ImageData => {
 
-
     pix_per_cell = Math.floor(pix_per_cell);
 
     const warp_num = warps(draft.drawdown)

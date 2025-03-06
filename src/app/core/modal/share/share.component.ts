@@ -96,8 +96,7 @@ export class ShareComponent {
 
     /**
      * update the information on the page to match what is stored in the file system
-     * @param license 
-     * @param author_list 
+     * @param share_obj 
      */
     updateSettings(share_obj: ShareObj){
 
@@ -105,8 +104,7 @@ export class ShareComponent {
       if(share_obj.img !== 'none'){
         this.mediaService.loadImage(-1, share_obj.img).then(media => {
           this.has_uploaded_image = true;
-          this.drawImage(media.data)
-
+         if(media.type =='image') this.drawImage(<SingleImage> media.img)
         });
       }
       

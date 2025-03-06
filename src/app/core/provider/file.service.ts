@@ -59,8 +59,7 @@ export class FileService {
 
      ada: async (filename: string, src: string, id: number, desc: string, data: any,  from_share: string) : Promise<LoadResponse> => {
 
-    
-
+  
       if(desc === undefined) desc = ""
       if(filename == undefined) filename = 'draft' 
       if(from_share == undefined) from_share = '' 
@@ -115,6 +114,7 @@ export class FileService {
         if(draft_nodes == undefined) draft_nodes = [];
 
         if(draft_nodes !== undefined){
+
           draft_nodes.forEach(el => {
 
             if(el.draft == undefined && el.compressed_draft !== undefined && el.compressed_draft !== null){
@@ -148,6 +148,7 @@ export class FileService {
           const loom = data.looms.find(loom => loom.draft_id === node.node_id);
           const draft = data.drafts.find(draft => draft.id === node.node_id);
 
+
           const dn: DraftNodeProxy = {
             node_id: (node === undefined) ? -1 : node.node_id,
             draft_id: node.node_id,
@@ -178,10 +179,14 @@ export class FileService {
 
       return Promise.all(draft_fns)
       .then( res => {
-          
+        //res contains a list of ids and drafts
+
         res.forEach(result => {
           let draft_ndx = draft_nodes.findIndex(el => el.draft_id == result.id);
           if(draft_ndx !== -1)  draft_nodes[draft_ndx].draft = result.draft;
+
+
+
         })
 
       return Promise.all(loom_fns)
@@ -519,6 +524,7 @@ export class FileService {
 
       //force loom type to something with shafts;
       loom_settings.type = 'frame';
+      console.log("LOOM WAS NULL in saver")
       loom = await getLoomUtilByType(loom_settings.type).computeLoomFromDrawdown(draft.drawdown, loom_settings);
 
      }

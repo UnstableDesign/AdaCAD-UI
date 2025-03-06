@@ -66,8 +66,6 @@ const  perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>) : Pro
   let weft_shuttle_map = new Sequence.OneD(system_map[0].rowShuttleMapping);
   let warp_shuttle_map = new Sequence.OneD(system_map[0].colShuttleMapping);
 
-  console.log("STRING SPLIT ", original_string_split);
-
 
   let layer_draft_map = original_string_split.reduce((acc, val) => {
     return {
@@ -82,7 +80,7 @@ const  perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>) : Pro
    layer_draft_map.wesy = utilInstance.filterToUniqueValues(system_map[0].colSystemMapping)
   }
   if(layer_draft_map.wasy.length == 0){
-    layer_draft_map.wasy = utilInstance.filterToUniqueValues(system_map[0].rowShuttleMapping)
+    layer_draft_map.wasy = utilInstance.filterToUniqueValues(system_map[0].rowSystemMapping)
   }
 
 

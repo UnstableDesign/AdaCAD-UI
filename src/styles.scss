@@ -15,11 +15,14 @@ body {
 
 
 .logo{
-  background-image: url('./assets/svg/logo.svg');
+ // background-image: url('./assets/svg/logo.svg');
+ background-color: white;
   display: block;
-  width: 40px;
+  width: 30px;
   height: 40px;
   margin-right: 8px;
+  -webkit-mask-image: url('./assets/svg/logo.svg');
+  mask-image: url('./assets/svg/logo.svg');
 }
 
 

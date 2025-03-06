@@ -33,7 +33,7 @@ export class ExamplesComponent {
       this.community_examples.filter(res => res.val.img !== 'none').forEach(res => {
         this.ms.loadImage(-1, res.val.img).then(media => {
           console.log("GOT MEDIA INSTANCE ",media)
-          this.drawImage(res.id, media.data)
+          if(media.type = 'image') this.drawImage(res.id, <SingleImage> media.img)
 
         });
       });

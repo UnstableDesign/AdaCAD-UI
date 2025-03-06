@@ -198,12 +198,14 @@ export class DraftRenderingComponent implements OnInit {
         
   }
 
-  ngOnChanges(changes:SimpleChanges){
-    if (changes['scale']) {
-     if(!changes['scale'].isFirstChange()) this.redrawAll();
-    }
+  //THIS DETECTS AND REDRAWS WHEN IT DOESN"T NEED TO 
+  //ngOnChanges(changes:SimpleChanges){
+    // console.log("CHANGES ", changes)
+    // if (changes['scale']) {
+    //  if(!changes['scale'].isFirstChange() && this.tree.getDraftVisible(this.id)) this.redrawAll();
+    // }
 
-  }
+  //}
   
 
   
@@ -925,17 +927,17 @@ export class DraftRenderingComponent implements OnInit {
       * receives offset of the scroll from the CDKScrollable created when the scroll was initiated
       */
       //this does not draw on canvas but just rescales the canvas
-      // public rescale(scale: number){
+      public rescale(scale: number){
         
-      //   if(this.id == -1) return;
+        if(this.id == -1) return;
 
-      //     const draft = this.tree.getDraft(this.id);
-      //     const loom = this.tree.getLoom(this.id);
-      //     const loom_settings = this.tree.getLoomSettings(this.id);
-      //     this.render.rescale(draft, loom, loom_settings, scale, this.canvases);
+          const draft = this.tree.getDraft(this.id);
+          const loom = this.tree.getLoom(this.id);
+          const loom_settings = this.tree.getLoomSettings(this.id);
+          this.render.rescale(draft, loom, loom_settings, scale, this.canvases);
 
            
-      // }
+      }
       
       
       
@@ -988,6 +990,7 @@ export class DraftRenderingComponent implements OnInit {
       
       //takes inputs about what to redraw
       public redraw(draft:Draft, loom: Loom, loom_settings:LoomSettings, flags:any) : Promise<boolean>{
+       
         if(draft == null) return;
 
         this.colSystemMapping = draft.colSystemMapping;

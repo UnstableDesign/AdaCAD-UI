@@ -1,4 +1,4 @@
-import { Component, EventEmitter, HostListener, Input, OnInit, Output, QueryList, ViewChildren } from '@angular/core';
+import { Component, EventEmitter, HostListener, Input, OnInit, Output, QueryList, ViewChild, ViewChildren } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { Draft, DynamicOperation, Interlacement, IOTuple, Operation, OpNode, Point } from '../../../core/model/datatypes';
 import { MediaService } from '../../../core/provider/media.service';
@@ -6,7 +6,6 @@ import { OperationDescriptionsService } from '../../../core/provider/operation-d
 import { OperationService } from '../../../core/provider/operation.service';
 import { SystemsService } from '../../../core/provider/systems.service';
 import { TreeService } from '../../../core/provider/tree.service';
-import { OpHelpModal } from '../../modal/ophelp/ophelp.modal';
 import { MultiselectService } from '../../provider/multiselect.service';
 import { ViewportService } from '../../provider/viewport.service';
 import { InletComponent } from './inlet/inlet.component';
@@ -14,7 +13,8 @@ import { ParameterComponent } from './parameter/parameter.component';
 import { ZoomService } from '../../../core/provider/zoom.service';
 import { ViewerService } from '../../../core/provider/viewer.service';
 import { DraftContainerComponent } from '../draftcontainer/draftcontainer.component';
-import { CdkDragMove } from '@angular/cdk/drag-drop';
+import { CdkDragMove, CdkDragStart } from '@angular/cdk/drag-drop';
+import { MatMenuTrigger } from '@angular/material/menu';
 
 
 
@@ -29,6 +29,7 @@ export class OperationComponent implements OnInit {
   @ViewChildren(ParameterComponent) paramsComps!: QueryList<ParameterComponent>;
   @ViewChildren(InletComponent) inletComps!: QueryList<InletComponent>;
   @ViewChildren(DraftContainerComponent) draftContainers!: QueryList<DraftContainerComponent>;
+  @ViewChild(MatMenuTrigger) trigger: MatMenuTrigger;
 
    @Input() id: number; //generated from the tree service
    @Input() name: string;
@@ -122,6 +123,7 @@ export class OperationComponent implements OnInit {
 
    category_name: string = "";
 
+   offset: Point = null;
 
    
   constructor(
@@ -181,6 +183,15 @@ export class OperationComponent implements OnInit {
 
     this.onOpLoaded.emit({id: this.id})
 
+  }
+
+  mousedown(e: any) {
+    //this.disable_drag = false;
+    e.stopPropagation();
+  }
+
+  onDoubleClick(){
+    this.trigger.openMenu();
   }
 
 
@@ -243,11 +254,6 @@ export class OperationComponent implements OnInit {
 
   }
 
-  mousedown(e: any) {
-    //this.disable_drag = false;
-    e.stopPropagation();
-  }
-
 
   hasPin() : boolean{
     if(!this.vs.hasPin()) return false;
@@ -263,6 +269,32 @@ export class OperationComponent implements OnInit {
   }
 
 
+  /**
+   * TO DO - right now, this defalts to the first child, if there are multiple children, does not offer a way to select...figure that part out
+   */
+  async saveAsWif() {
+
+    if(this.draftContainers.length > 0){
+      this.draftContainers.get(0).saveAsWif();
+    }
+  
+  }
+
+  async saveAsPrint() {
+    if(this.draftContainers.length > 0){
+      this.draftContainers.get(0).saveAsPrint();
+    }
+  }
+
+  async saveAsBmp() : Promise<any> {
+    if(this.draftContainers.length > 0){
+      this.draftContainers.get(0).saveAsBmp();
+    }
+   
+  }
+
+
+
 
   unpinFromView(){
     this.vs.clearPin();
@@ -273,7 +305,6 @@ export class OperationComponent implements OnInit {
 
 
   inputSelected(obj: any){
-    console.log("INLET SELECTED ", obj)
     let input_id = obj.inletid;
     let val = obj.val;
     this.onInputAdded.emit({id: this.id, ndx: input_id, val:val });
@@ -320,13 +351,12 @@ export class OperationComponent implements OnInit {
     this.onConnectionRemoved.emit(obj);
   }
 
+
+
   openHelpDialog() {
-    const dialogRef = this.dialog.open(OpHelpModal, {
-      data: {
-        name: this.op.name,
-        op: this.op
-      }
-    });
+
+    window.open('https://docs.adacad.org/docs/reference/operations/'+this.op.name, '_blank');
+;
 
   }
 
@@ -352,7 +382,7 @@ export class OperationComponent implements OnInit {
 
 
     if(this.is_dynamic_op){
-
+      
       const opnode = <OpNode> this.tree.getNode(this.id);
       const op = <DynamicOperation> this.operations.getOp(opnode.name);
       //this is a hack to use an input draft to generate inlets
@@ -397,8 +427,8 @@ export class OperationComponent implements OnInit {
   }
 
   drawImagePreview(){
-    let param = this.paramsComps.get(0)
-     param.drawImagePreview();
+    let param = this.paramsComps.get(0);
+    param.drawImagePreview();
   }
 
   //returned from a file upload event
@@ -485,9 +515,12 @@ export class OperationComponent implements OnInit {
 
 
 
-  dragStart(e: any) {
-    console.log("DRAG START ", e.srcElement)
 
+  dragStart($event: CdkDragStart) {
+
+
+    this.offset = null;
+  
      if(this.multiselect.isSelected(this.id)){
       this.multiselect.setRelativePosition(this.topleft);
      }else{
@@ -495,24 +528,52 @@ export class OperationComponent implements OnInit {
      }
   }
 
+
+  /**
+   * ANGULARS default drag handler does not consider the scaled palette, it will move relative to the 
+   * absolute mouse position 
+   * @param $event 
+   */
   dragMove($event: CdkDragMove) {
+
+
+    //GET THE LOCATION OF THE POINTER RELATIVE TO THE TOP LEFT OF THE NODE
 
     let parent = document.getElementById('scrollable-container');
     let op_container = document.getElementById('scale-'+this.id);
     let rect_palette = parent.getBoundingClientRect();
 
-    const zoom_factor =  1/this.zs.getMixerZoom();
 
-    let screenX = $event.pointerPosition.x-rect_palette.x+parent.scrollLeft; 
-    let scaledX = screenX* zoom_factor;
-    let screenY = $event.pointerPosition.y-rect_palette.y+parent.scrollTop;
-    let scaledY = screenY * zoom_factor;
+    const zoom_factor =  1/this.zs.getMixerZoom();
+    
+    //this gives the position of
+    let op_topleft_inscale = {
+      x: op_container.offsetLeft,
+      y: op_container.offsetTop
+    }
+
+    
+    let scaled_pointer = {
+      x: ($event.pointerPosition.x-rect_palette.x + parent.scrollLeft) * zoom_factor,
+      y: ($event.pointerPosition.y-rect_palette.y+ parent.scrollTop) * zoom_factor,
+    }
+
+
+
+    if(this.offset == null){
    
+      this.offset = {
+        x: scaled_pointer.x - op_topleft_inscale.x,
+        y: scaled_pointer.y - op_topleft_inscale.y
+      }
+      //console.log("LEFT WITH SCALE VS, LEFT POINTER ", op_topleft_inscale, scaled_pointer, this.offset);
+
+    }
 
 
     this.topleft = {
-      x: scaledX,
-      y: scaledY
+      x: scaled_pointer.x - this.offset.x,
+      y: scaled_pointer.y - this.offset.y
 
     }
     op_container.style.transform = 'none'; //negate angulars default positioning mechanism

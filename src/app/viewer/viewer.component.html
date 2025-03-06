@@ -123,12 +123,13 @@
       
             <!-- <button mat-icon-button (click)="zoomOut()"><i class="fas fa-search-minus"></i></button>          -->
            
-              <mat-slider 
+              <mat-slider
+              [class.hidden]="vis_mode == 'sim'" 
               min="0"
               [max]="zs.num_steps"  
               step="1" 
              >
-              <input matSliderThumb [(ngModel)]="zs.zoom_table_ndx_viewer"  (valueChange)="renderChange()" >
+              <input matSliderThumb [(ngModel)]="zs.zoom_table_ndx_viewer"  (valueChange)="zoomChange()" >
             </mat-slider>
 
       

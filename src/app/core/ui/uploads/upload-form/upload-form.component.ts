@@ -66,7 +66,15 @@ export class UploadFormComponent implements OnInit {
    uploadImage(upload: Upload, file: File, type: 'image' | 'indexed_color_image') : Promise<any> {
 
     return this.upSvc.pushUpload(upload).then(snapshot => {
-      return  this.mediaSvc.loadMedia([{id: -1, ref: upload.name, data:null, type}]);
+      
+      const media_instance = {
+        id: -1, 
+        ref: upload.name, 
+        type: type,
+        img: null
+      }
+
+      return  this.mediaSvc.loadMediaFromUpload([media_instance]);
     }).then(uploaded => {
 
 

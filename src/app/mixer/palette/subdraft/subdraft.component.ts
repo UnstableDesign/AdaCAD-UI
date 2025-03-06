@@ -11,6 +11,7 @@ import { MultiselectService } from '../../provider/multiselect.service';
 import { ViewportService } from '../../provider/viewport.service';
 import { DraftContainerComponent } from '../draftcontainer/draftcontainer.component';
 import { CdkDragMove, CdkDragStart } from '@angular/cdk/drag-drop';
+import { MatMenuTrigger } from '@angular/material/menu';
 
 
 @Component({
@@ -85,13 +86,15 @@ export class SubdraftComponent implements OnInit {
 
   set_connectable:boolean = false;
 
-  draft_visible: boolean = true;
+  // draft_visible: boolean = true;
 
   loom_settings: LoomSettings;
 
   use_colors: boolean = false;
 
   draft_zoom: number = 1;
+
+  offset: Point = null;
 
   constructor( 
     private dm: DesignmodesService,
@@ -122,6 +125,7 @@ export class SubdraftComponent implements OnInit {
  
     const dn:DraftNode = <DraftNode> this.tree.getNode(this.id);
     this.use_colors = dn.render_colors;
+    
 
 
     if(this.tree.isSibling(this.id)) this.disableDrag();
@@ -139,6 +143,7 @@ export class SubdraftComponent implements OnInit {
   sd_container.style.transform = 'none'; //negate angulars default positioning mechanism
   sd_container.style.top =  this.topleft.y+"px";
   sd_container.style.left =  this.topleft.x+"px";
+  this.onRedrawOutboundConnections.emit(this.id);
 
 
   }
@@ -354,12 +359,17 @@ openInEditor(event: any){
   }
 
 
+  onDoubleClick(){
+    this.draftcontainer.onDoubleClick();
+  }
+
 
 
  
   redrawExistingDraft(){
 
     const draft = this.tree.getDraft(this.id);
+    this.draftcontainer.draft_visible = this.tree.getDraftVisible(this.id);
     this.draftcontainer.drawDraft(draft);
 
   }
@@ -422,6 +432,7 @@ openInEditor(event: any){
 
 
     this.moving = true;
+    this.offset = null;
     this.counter = 0;  
       //set the relative position of this operation if its the one that's dragging
      if(this.multiselect.isSelected(this.id)){
@@ -436,33 +447,54 @@ openInEditor(event: any){
 
 
 /**
- * the positioning is strange because the mouse is in screen coordinates and needs to account for the 
-   positioning of the palette on screen. We take that position and translate it (by * 1/zoom factor) to the palette coordinate system, which is transformed by the scale operations. We then write the new position while acounting for the sidebar.
+  this function converts the position of the pointer into the platte coordinate space, it also factors in the top left position so that the 
+  pointer position remains constant within the subdraft
  * @param $event 
  */
   dragMove($event: CdkDragMove) {
 
-
     let parent = document.getElementById('scrollable-container');
-    let sd_container = document.getElementById('scale-'+this.id);
+    let op_container = document.getElementById('scale-'+this.id);
     let rect_palette = parent.getBoundingClientRect();
 
+
     const zoom_factor =  1/this.zs.getMixerZoom();
-
-    let screenX = $event.pointerPosition.x-rect_palette.x+parent.scrollLeft; 
-    let scaledX = screenX* zoom_factor;
-    let screenY = $event.pointerPosition.y-rect_palette.y+parent.scrollTop;
-    let scaledY = screenY * zoom_factor;
-  
-
-    this.topleft = {
-      x: scaledX,
-      y: scaledY
+ 
+    //this gives the position of
+    let op_topleft_inscale = {
+      x: op_container.offsetLeft,
+      y: op_container.offsetTop
     }
 
-    sd_container.style.transform = 'none'; //negate angulars default positioning mechanism
-    sd_container.style.top =  this.topleft.y+"px";
-    sd_container.style.left =  this.topleft.x+"px";
+ 
+    let scaled_pointer = {
+      x: ($event.pointerPosition.x-rect_palette.x + parent.scrollLeft) * zoom_factor,
+      y: ($event.pointerPosition.y-rect_palette.y+ parent.scrollTop) * zoom_factor,
+    }
+
+
+
+      if(this.offset == null){
+
+        this.offset = {
+          x: scaled_pointer.x - op_topleft_inscale.x,
+          y: scaled_pointer.y - op_topleft_inscale.y
+        }
+        //console.log("LEFT WITH SCALE VS, LEFT POINTER ", op_topleft_inscale, scaled_pointer, this.offset);
+
+      }
+
+
+    this.topleft = {
+      x: scaled_pointer.x - this.offset.x,
+      y: scaled_pointer.y - this.offset.y
+
+    }
+    op_container.style.transform = 'none'; //negate angulars default positioning mechanism
+    op_container.style.top =  this.topleft.y+"px";
+    op_container.style.left =  this.topleft.x+"px";
+
+
 
     this.onSubdraftMove.emit({id: this.id, point: this.topleft});
 
@@ -476,10 +508,12 @@ openInEditor(event: any){
     this.disable_drag = false;
   }
 
-  showhide(){
-    this.draft_visible = !this.draft_visible;
-    this.onSubdraftViewChange.emit(this.id);
-  }
+  // showhide(){
+  //   let vis = this.tree.getDraftVisible(this.id);
+  //   this.tree.setDraftVisiblity(this.id, !vis);
+  //  // this.draft_visible = !this.draft_visible;
+  //   this.onSubdraftViewChange.emit(this.id);
+  // }
 
   connectionClicked(id:number){
     this.has_active_connection  = true;

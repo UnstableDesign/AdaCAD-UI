@@ -5,16 +5,18 @@
 	class="subdraft-parent-container selectable-{{!disable_drag}}" 
 	[class.is_selected]="selected_draft_id == id"
 	cdkDrag
-	(mousedown)="mousedown($event)"
+	(dblclick)="onDoubleClick()"
 	(click)="toggleMultiSelection($event)"
 	[style.z-index] = "zndx"
-	[class.drawing] = "disable_drag && !is_preview"
 	[class.no-pointer] = "disable_drag"
 	[cdkDragDisabled] = "disable_drag"
 	(cdkDragMoved)="dragMove($event)"
 	(cdkDragEnded)="dragEnd($event)"
 	(cdkDragStarted)="dragStart($event)"
 	> 
+
+ 	<div class="topbar" cdkDragHandle >
+	</div>
 
 
 	<app-draftcontainer

@@ -8,6 +8,48 @@ cdkDrag
 <mat-dialog-content >
 
   <mat-tab-group>
+
+    <mat-tab label="AdaCAD Templates">
+      
+    
+    
+      <div class="preloaded_files">
+    
+          <mat-card appearance="outlined" *ngFor="let example of local_examples">
+    
+            <div class="card-content">
+    
+    
+              <div class="img">       
+                <img src="/assets/example_img/{{example.id}}.{{example.ext}}" alt="Screenshot of the File Contents">
+              </div>
+    
+              <div class="info">
+                <mat-card-content>
+                    <mat-card-header>
+                      <mat-card-title>{{example.title}}</mat-card-title>
+                      <mat-card-subtitle>by AdaCAD project team</mat-card-subtitle>
+                    </mat-card-header>
+    
+                    <p>{{example.desc}}</p>
+                  </mat-card-content>
+                
+              </div>
+              <mat-card-actions>
+                <button mat-raised-button color="primary" (click)="loadExample(example.id)">OPEN</button>
+              </mat-card-actions>
+            </div>
+          </mat-card>
+    
+    
+          
+    
+          </div>
+         
+    
+    
+    
+    </mat-tab>
     <mat-tab label="Community Projects"> 
 
       <div class="community_files">
@@ -61,47 +103,6 @@ cdkDrag
 
 
 
-    </mat-tab>
-    <mat-tab label="AdaCAD Templates">
-      
-    
-    
-      <div class="preloaded_files">
-    
-          <mat-card appearance="outlined" *ngFor="let example of local_examples">
-    
-            <div class="card-content">
-    
-    
-              <div class="img">       
-                <img src="/assets/example_img/{{example.id}}.{{example.ext}}" alt="Screenshot of the File Contents">
-              </div>
-    
-              <div class="info">
-                <mat-card-content>
-                    <mat-card-header>
-                      <mat-card-title>{{example.title}}</mat-card-title>
-                      <mat-card-subtitle>by AdaCAD project team</mat-card-subtitle>
-                    </mat-card-header>
-    
-                    <p>{{example.desc}}</p>
-                  </mat-card-content>
-                
-              </div>
-              <mat-card-actions>
-                <button mat-raised-button color="primary" (click)="loadExample(example.id)">OPEN</button>
-              </mat-card-actions>
-            </div>
-          </mat-card>
-    
-    
-          
-    
-          </div>
-         
-    
-    
-    
     </mat-tab>
   </mat-tab-group>
 

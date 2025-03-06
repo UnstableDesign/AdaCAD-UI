@@ -106,7 +106,8 @@
             "op_names":[
                 "selvedge",
                 "bind weft floats",
-                "bind warp floats"
+                "bind warp floats",
+                "erase blank rows"
             ]
         },
         {

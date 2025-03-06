@@ -67,6 +67,8 @@ export class StateService {
  */
   public addMixerHistoryState(ada:{json: string, file: SaveObj}){
 
+    // console.log("ADD MIXER HX", ada.file.draft_nodes)
+
     var state = {
       draft: null,
       ada: {

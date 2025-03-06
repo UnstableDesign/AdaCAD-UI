@@ -3,7 +3,6 @@ import { NumParam, Operation, OperationInlet, OpInput, OpParamVal } from "../../
 import { initDraftFromDrawdown, updateWarpSystemsAndShuttles, updateWeftSystemsAndShuttles, warps, wefts } from "../../model/drafts";
 import { getAllDraftsAtInlet, getInputDraft, getOpParamValById, parseDraftNames } from "../../model/operations";
 import { Sequence } from "../../model/sequence";
-import utilInstance from "../../model/util";
 
 
 const name = "atop";

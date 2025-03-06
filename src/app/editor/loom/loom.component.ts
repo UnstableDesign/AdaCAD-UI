@@ -247,7 +247,7 @@ export class LoomComponent {
 
   
     loomChange(f:NgForm){
-
+      console.log("LOOM CHANGE")
       if(this.id == -1) return;
 
       const draft = this.tree.getDraft(this.id);

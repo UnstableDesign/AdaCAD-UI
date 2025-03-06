@@ -62,6 +62,7 @@ const  perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>) => {
     treadles: treadles
   }
 
+  console.log("MAKE LOOM")
   const utils = getLoomUtilByType(loom_settings.type);
   return utils.computeLoomFromDrawdown(draft.drawdown, loom_settings)
   .then(l => {

@@ -255,19 +255,6 @@ addOp(event: any){
   this.palette.addOperation(event)
 }
 
-
-zoomIn(){
-  this.zs.zoomInMixer();
-  this.renderChange();
-
-}
-
-
-zoomOut(){
-  this.zs.zoomOutMixer();
-  this.renderChange();
-}
-
 createNewDraft(){
 
   const dialogRef = this.dialog.open(BlankdraftModal, {
@@ -537,7 +524,7 @@ zoomChange(zoom_index:any){
       scale: 1
     }
 
-    this.tree.loadDraftData({prev_id: null, cur_id: id,}, draft, loom, loom_settings, true, 1);
+    this.tree.loadDraftData({prev_id: null, cur_id: id,}, draft, loom, loom_settings, true, 1, !this.ws.hide_mixer_drafts);
     this.palette.loadSubDraft(id, draft, nodep, dnproxy);
     return id;
   }

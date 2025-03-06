@@ -153,7 +153,7 @@ export class UploadService {
     const storage = getStorage();
     if(id === 'noinput') return Promise.resolve('');
 
-    console.log("GET DATA AT ", id)
+   // console.log("GET DATA AT ", id)
     this.getDownloadMetaData(id);
 
     return getDownloadURL(ref(storage, 'uploads/'+id))

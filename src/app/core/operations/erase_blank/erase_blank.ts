@@ -38,7 +38,7 @@ const  perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>) => {
 
  input_draft.drawdown.forEach((row, i) => {
     let seq = new Sequence.OneD().import(row);
-    if(!utilInstance.hasOnlyUnset(row)){
+    if(!utilInstance.hasOnlyUnsetOrDown(row)){
         pattern.pushWeftSequence(seq.val());
         weft_sys.push(input_draft.rowSystemMapping[i])
         weft_mats.push(input_draft.rowShuttleMapping[i])

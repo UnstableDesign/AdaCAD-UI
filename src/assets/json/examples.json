@@ -9,6 +9,24 @@
             "desc":"This workspace demonstrates a starting point for making workspaces in AdaCAD by chaining together one operation from each operation category and seeing what emerges"
         },
         {
+            "id": "weaving_imagery",
+            "ext": "png",
+            "title":"Weaving Imagery",
+            "desc":"This template offers a workflow for adding structures to color regions in an image, previewing the coloring of the image, and formatting it for weaving on a jacquard loom."
+        },
+        {
+            "id": "harness_loom",
+            "ext": "png",
+            "title":"Designing for Harness Looms",
+            "desc":"This template offers a dataflow focused on designing a threading, tieup and treadling for a four harness loom."
+        },
+        {
+            "id": "color_blending",
+            "ext": "png",
+            "title":"Color Blending",
+            "desc":"This template shows a process for assigning structures that will blend colors between alternating warp and weft systems and colors. The blended structures are assigned to regions of an image and the user is invited to create their own color blend for the blue region."
+        },
+        {
             "id": "basic_operations",
             "ext": "png",
             "title":"Basic Operations",

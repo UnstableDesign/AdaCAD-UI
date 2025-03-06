@@ -277,8 +277,8 @@ handlePan(diff: Point){
    */
   async downloadVisibleDraftsAsBmp() : Promise<any>{
 
-    const drafts: Array<SubdraftComponent> = this.tree.getDrafts();
-    const visible_drafts: Array<SubdraftComponent> = drafts.filter(el => el.draft_visible)
+
+    const visible_drafts: Array<SubdraftComponent> = this.tree.getDraftNodes().filter(el => el.visible).map(el=> <SubdraftComponent> el.component);
     const functions: Array<Promise<any>> = visible_drafts.map(el => el.draftcontainer.saveAsBmp());
     return Promise.all(functions).then(el =>
       console.log("Downloaded "+functions.length+" files")
@@ -352,20 +352,41 @@ handlePan(diff: Point){
 
 
   /**
-   * @param scale 
+   * updates the view after a zoom event is called. Changes the scale of the palette scale container and 
+   * scrolls such that the top left point when zoom is called remains the same after the zoom is updated
+   * 
+   * the position of the operation does not change, only the scale does. 
    */
   rescale(){
 
-    /**TO DO  */
-    //figure out how to keep the content centered when this zoom takes place
+    const view_window:HTMLElement = document.getElementById('scrollable-container');
+    const container:HTMLElement = document.getElementById('palette-scale-container');
+    if(view_window === null || view_window === undefined) return;
 
-    const container: HTMLElement = document.getElementById('palette-scale-container');
+    //let the top left point of the scroll, this is given in terms of palette scale container. 
     if(container === null) return;
 
-    // const scrollTop = container.parentElement.scrollTop;
-    // const scrollLeft = container.parentElement.scrollLeft;
-    container.style.transformOrigin = 'top left';
-    container.style.transform = 'scale(' + this.zs.getMixerZoom() + ')';
+    // //what % of the range is this point 
+    let pcentX = view_window.scrollLeft / view_window.scrollWidth;
+    let pcentY = view_window.scrollTop / view_window.scrollHeight;
+
+
+    //transform to the top left 
+    //container.style.transformOrigin = scrollLeft+"px "+scrollTop+"px"; //this goes to the center point
+    container.style.transformOrigin = "top left"; //reset after moving as to not affect scrolling 
+    container.style.transform = 'scale(' + this.zs.getMixerZoom() + ')'; 
+
+
+    // move the scroll by the same % within the new div size
+    let newScrollLeft =  view_window.scrollWidth * pcentX;
+    let newScrollTop =  view_window.scrollWidth * pcentY;
+
+
+    view_window.scroll({
+      left: newScrollLeft,
+      top: newScrollTop,
+      behavior: "instant"
+    });
 
     this.redrawConnections();
   }
@@ -558,7 +579,7 @@ handlePan(diff: Point){
     subdraft.instance.scale = this.zs.getMixerZoom();
 
 
-    return this.tree.loadDraftData({prev_id: -1, cur_id: id}, d, loom, loom_settings, true, 1)
+    return this.tree.loadDraftData({prev_id: -1, cur_id: id}, d, loom, loom_settings, true, 1, true)
       .then(d => {
         return Promise.resolve(subdraft.instance);
         }
@@ -604,7 +625,6 @@ handlePan(diff: Point){
     this.setSubdraftSubscriptions(subdraft.instance);
     subdraft.instance.id = id;
     subdraft.instance.scale = this.zs.getMixerZoom();
-    subdraft.instance.draft_visible = true;
     subdraft.instance.use_colors = true;
     subdraft.instance.draft = d;
     subdraft.instance.parent_id = this.tree.getSubdraftParent(id);
@@ -613,10 +633,6 @@ handlePan(diff: Point){
       const adj_topleft: Point = {x: nodep.topleft.x, y: nodep.topleft.y};
       
       subdraft.instance.topleft = adj_topleft;
-
-      if(draftp !== null && draftp !== undefined){
-        subdraft.instance.draft_visible = draftp.draft_visible;
-      }
 
       if(draftp !== null && draftp !== undefined && draftp.render_colors !== undefined){
         subdraft.instance.use_colors = draftp.render_colors;
@@ -2141,6 +2157,7 @@ pasteConnection(from: number, to: number, inlet: number){
 
     if(obj === null) return;
 
+    console.log("SWEEP INLETS")
     return this.tree.sweepInlets(obj.id, obj.prior_inlet_vals)
       .then(viewRefs => {
         viewRefs.forEach(el => {

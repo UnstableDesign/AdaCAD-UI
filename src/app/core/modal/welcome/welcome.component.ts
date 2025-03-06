@@ -12,6 +12,13 @@ export class WelcomeComponent {
   }
 
   loadOlderBeta(){
-    window.location.href = "https://adacad-beta-fa4dc.web.app/";
+//    window.location.href = "https://adacad-beta-fa4dc.web.app/";
+    window.location.href = "https://version3.adacad.org";
+  }
+
+
+  loadDocs(){
+    window.open('https://docs.adacad.org/docs/learn/tutorials/', '_blank');
+
   }
 }

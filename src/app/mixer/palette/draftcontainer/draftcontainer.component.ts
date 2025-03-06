@@ -11,6 +11,7 @@ import { TreeService } from '../../../core/provider/tree.service';
 import { WorkspaceService } from '../../../core/provider/workspace.service';
 import { DraftRenderingComponent } from '../../../core/ui/draft-rendering/draft-rendering.component';
 import { ViewerService } from '../../../core/provider/viewer.service';
+import { MatMenuTrigger } from '@angular/material/menu';
 
 @Component({
   selector: 'app-draftcontainer',
@@ -31,7 +32,9 @@ export class DraftContainerComponent implements AfterViewInit{
   @Output() onDrawdownSizeChanged = new EventEmitter();
  
   @ViewChild('bitmapImage') bitmap: any;
-  @ViewChild('draft_rendering') draft_rendering: DraftRenderingComponent;
+  @ViewChild('draft_rendering') draft_rendering: 
+  DraftRenderingComponent;
+  @ViewChild(MatMenuTrigger) trigger: MatMenuTrigger;
 
 
 
@@ -47,7 +50,7 @@ export class DraftContainerComponent implements AfterViewInit{
 
   draft_visible: boolean = true;
 
-  use_colors: boolean = false;
+  use_colors: boolean = true;
 
   outlet_connected: boolean = true;
 
@@ -93,12 +96,17 @@ export class DraftContainerComponent implements AfterViewInit{
     this.outlet_connected = (this.tree.getNonCxnOutputs(this.id).length > 0);
     this.draft_name = this.tree.getDraftName(this.id);
     this.local_zoom = this.tree.getDraftScale(this.id);
+    this.draft_visible = this.tree.getDraftVisible(this.id);
     
     this.draft_rendering.onNewDraftLoaded(this.id);
     this.drawDraft(draft);  
    
     this.startSizeObserver();
 
+  }
+
+  onDoubleClick(){
+    this.trigger.openMenu();
   }
 
   updateStyle(viewer_id: number){
@@ -130,6 +138,7 @@ export class DraftContainerComponent implements AfterViewInit{
 
 
       let draft = this.tree.getDraft(this.id);
+      this.draft_visible = this.tree.getDraftVisible(this.id);
 
       if(draft == undefined || draft == null){
         this.ud_name = 'this operation did not create a draft, check to make sure it has all the inputs it needs';
@@ -181,8 +190,21 @@ export class DraftContainerComponent implements AfterViewInit{
   }
 
   toggleVisibility(){
-    console.log("VIS TOGGLED", this.draft_visible, this.ws.hide_mixer_drafts)
+   // console.log("VIS TOGGLED", this.id,  this.draft_visible, this.ws.hide_mixer_drafts)
     this.draft_visible = !this.draft_visible;
+    this.tree.setDraftVisiblity(this.id, this.draft_visible);
+    
+    const draft = this.tree.getDraft(this.id);
+
+    if(this.draft_rendering !== undefined && draft !== undefined && draft !== null){
+      this.draft_rendering.onNewDraftLoaded(this.id);
+      this.drawDraft(draft);
+    } else{
+      this.draft_rendering.clear();
+
+    }
+
+   
   }
 
   nameFocusOut(event){
@@ -219,7 +241,8 @@ export class DraftContainerComponent implements AfterViewInit{
   drawDraft(draft: Draft) : Promise<boolean>{
 
 
-    if(this.hasParent && this.ws.hide_mixer_drafts) return Promise.resolve(false);
+
+    if(!this.tree.getDraftVisible(this.id)) return Promise.resolve(false);
     if(this.draft_rendering == null || this.draft_rendering == undefined)return Promise.resolve(false);
 
     const loom = this.tree.getLoom(this.id);
@@ -237,6 +260,7 @@ export class DraftContainerComponent implements AfterViewInit{
 
     return this.draft_rendering.redraw(draft, loom, loom_settings, flags ).then(el => {
       this.tree.setDraftClean(this.id);
+      this.onDrawdownSizeChanged.emit(true);
       return Promise.resolve(true);
     })
 
@@ -265,10 +289,15 @@ export class DraftContainerComponent implements AfterViewInit{
   async saveAsPrint() {
     let draft = this.tree.getDraft(this.id);
 
+    console.log("CURRENT VIEW ", this.current_view)
+    let floats = (this.current_view == 'draft') ? false : true;
+    let color = (this.current_view == 'visual') ? true : false;
+
     utilInstance.saveAsPrint(
       this.bitmap.nativeElement,
       draft,
-      this.use_colors,
+      color,
+      floats,
       this.ws.selected_origin_option, 
       this.ms,
       this.ss,
@@ -316,7 +345,7 @@ export class DraftContainerComponent implements AfterViewInit{
         this.local_zoom = event;
         const dn = <DraftNode> this.tree.getNode(this.id);
         dn.scale = this.local_zoom;
-        this.draft_rendering.redrawAll();
+        this.draft_rendering.rescale(dn.scale);
     }
   
 

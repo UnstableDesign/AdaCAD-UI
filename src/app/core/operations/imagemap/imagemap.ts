@@ -63,6 +63,7 @@ const  perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>) => {
 
     const data:AnalyzedImage = file_param.data;
 
+    console.log("DATA ", data)
 
     //coorelates the inlet with an associated draft
     const color_to_drafts = data.colors.map((color, ndx) => {

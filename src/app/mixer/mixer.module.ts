@@ -6,7 +6,6 @@ import { PaletteComponent } from './palette/palette.component';
 import { SnackbarComponent } from './palette/snackbar/snackbar.component';
 import { OperationComponent } from './palette/operation/operation.component';
 import { ConnectionComponent } from './palette/connection/connection.component';
-import { OpHelpModal } from './modal/ophelp/ophelp.modal';
 import { ImageComponent } from './palette/image/image.component';
 import { NoteComponent } from './palette/note/note.component';
 import { ParameterComponent } from './palette/operation/parameter/parameter.component';
@@ -25,7 +24,6 @@ import { DraftContainerComponent } from './palette/draftcontainer/draftcontainer
         SnackbarComponent,
         OperationComponent,
         ConnectionComponent,
-        OpHelpModal,
         ImageComponent,
         NoteComponent,
         ParameterComponent,

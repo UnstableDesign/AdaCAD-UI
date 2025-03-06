@@ -5,7 +5,7 @@ import utilInstance from '../../../core/model/util';
 import { NotesService } from '../../../core/provider/notes.service';
 import { ViewportService } from '../../provider/viewport.service';
 import { ZoomService } from '../../../core/provider/zoom.service';
-import { CdkDragMove } from '@angular/cdk/drag-drop';
+import { CdkDragMove, CdkDragStart } from '@angular/cdk/drag-drop';
 
 @Component({
   selector: 'app-note',
@@ -30,6 +30,7 @@ export class NoteComponent implements OnInit {
   disable_drag: boolean = false;
   image_url: string = "";
   moveSubscription: Subscription;
+  offset: Point = null;
 
 
   constructor(
@@ -68,74 +69,59 @@ export class NoteComponent implements OnInit {
     note_container.style.left =  this.topleft.x+"px";
   }
 
-  /**
-   * called via resize button
-   * @param event 
-   */
-  // @HostListener('mousedown', ['$event'])
-  // private onStart(event) {
-  //   if(event.target.id == 'resize_button'){
-  //     this.moveSubscription = 
-  //          fromEvent(document, 'mousemove').subscribe(e => this.onDrag(e)); 
-
-  //   }
-
-  // }
-
-  // @HostListener('mouseup', ['$event'])
-  // private onEnd(event) {
-  //     if(this.moveSubscription !== undefined) this.moveSubscription.unsubscribe();
-    
-
-  // }
-
-  /**
-   * called by the expanding function
-   * @param event 
-   */
-  // onDrag(event: any){
-  //   const zoom_factor:number = this.default_cell/this.scale;
-  //   const pointer:Point = {x: event.clientX, y: event.clientY};  
-  //   this.note.width =(pointer.x - this.bounds.topleft.x + 10)*zoom_factor;
-  //   this.note.height = (pointer.y - this.bounds.topleft.y + 10)*zoom_factor
-    
-  // }
-
 
   delete(){
     this.deleteNote.emit(this.note.id);
+  }
+
+  dragStart($event: CdkDragStart){
+    this.offset = null;
   }
     
 
   dragMove($event: CdkDragMove) {
 
-
     let parent = document.getElementById('scrollable-container');
     let note_container = document.getElementById('note-'+this.id);
     let rect_palette = parent.getBoundingClientRect();
 
-    const zoom_factor =  1/this.zs.getMixerZoom();
 
-    let screenX = $event.pointerPosition.x-rect_palette.x+parent.scrollLeft; 
-    let scaledX = screenX* zoom_factor;
-    let screenY = $event.pointerPosition.y-rect_palette.y+parent.scrollTop;
-    let scaledY = screenY * zoom_factor;
-   
+    const zoom_factor =  1/this.zs.getMixerZoom();
+ 
+    //this gives the position of
+    let op_topleft_inscale = {
+      x: note_container.offsetLeft,
+      y: note_container.offsetTop
+    }
+
+ 
+    let scaled_pointer = {
+      x: ($event.pointerPosition.x-rect_palette.x + parent.scrollLeft) * zoom_factor,
+      y: ($event.pointerPosition.y-rect_palette.y+ parent.scrollTop) * zoom_factor,
+    }
+
+
+
+    if(this.offset == null){
+
+      this.offset = {
+        x: scaled_pointer.x - op_topleft_inscale.x,
+        y: scaled_pointer.y - op_topleft_inscale.y
+      }
+      //console.log("LEFT WITH SCALE VS, LEFT POINTER ", op_topleft_inscale, scaled_pointer, this.offset);
+
+    }
 
 
     this.topleft = {
-      x: scaledX,
-      y: scaledY
+      x: scaled_pointer.x - this.offset.x,
+      y: scaled_pointer.y - this.offset.y
 
     }
     note_container.style.transform = 'none'; //negate angulars default positioning mechanism
     note_container.style.top =  this.topleft.y+"px";
     note_container.style.left =  this.topleft.x+"px";
 
-    this.note.topleft = {
-      x: this.topleft.x,
-      y: this.topleft.y
-    };
   }
 
 

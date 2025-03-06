@@ -151,10 +151,8 @@
 
 
 
-    <ng-container  *ngIf="param.type == 'file'">
-       
+    <ng-container  *ngIf="param.type == 'file'">       
       <div class='file-input-param'>
-        
         <div class="form-and-warning">
           <button mat-raised-button [class.show]="has_image_uploaded"  [class.hide]="!has_image_uploaded" 
           (click)="replaceImage()" >Replace Image</button>

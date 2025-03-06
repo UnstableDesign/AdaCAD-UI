@@ -269,6 +269,38 @@ class Util {
   }
 
 
+
+  /**
+   * given a list of Bounds objects, this function will merge the bounds such that the top left point represents the top-most and left-most of the values and the width and height contain all values
+   * @param list 
+   * @returns 
+   */
+  mergeBounds(list: Array<Bounds>) : Bounds | null {
+
+    list = list.filter(el => el !== null && el !== undefined);
+    if(list.length == 0) return null;
+
+    const first = list.pop();
+
+    const tlbr = list.reduce((acc, val) => {
+
+      if(val.topleft.x < acc.topleft.x) acc.topleft.x = val.topleft.x;
+      if(val.topleft.y < acc.topleft.y) acc.topleft.y = val.topleft.y;
+      if(val.topleft.x+val.width > acc.botright.x) acc.botright.x = val.topleft.x + val.width;
+      if(val.topleft.y+val.height > acc.botright.y) acc.botright.y = val.topleft.y + val.height;
+      return acc;
+    }, {topleft: first.topleft, botright: {x: first.topleft.x + first.width, y: first.topleft.y + first.height}})
+
+
+    return {
+      topleft: {x: tlbr.topleft.x, y: tlbr.topleft.y},
+      width: (tlbr.botright.x - tlbr.topleft.x),
+      height: (tlbr.botright.y - tlbr.topleft.y),
+    }
+
+  }
+
+
   /**
    * finds the right-most component, used to create bounding box 
    * @param main the component we are comparing to
@@ -342,8 +374,8 @@ class Util {
   
         case 'up':
           if(a === null) return b;
-          if(a === true) return true;
-          return false;
+          if(b === null) return a;
+          return b;
         break;
   
         case 'down':
@@ -794,8 +826,8 @@ class Util {
     return max;
   }
 
-  hasOnlyUnset(cells: Array<Cell>) : boolean{
-    const hasValue = cells.find(el => getCellValue(el) !== null);
+  hasOnlyUnsetOrDown(cells: Array<Cell>) : boolean{
+    const hasValue = cells.find(el => (getCellValue(el) === true));
     if(hasValue === undefined) return true;
     else return false;
   }
@@ -1141,7 +1173,7 @@ async saveAsWif(fs: FileService, draft: Draft, loom:Loom, loom_settings:LoomSett
   
 }
 
-async saveAsPrint(el: any, draft: Draft, use_colors: boolean, selected_origin_option: number, ms: MaterialsService, ss: SystemsService, fs: FileService ) {
+async saveAsPrint(el: any, draft: Draft, floats: boolean, use_colors: boolean, selected_origin_option: number, ms: MaterialsService, ss: SystemsService, fs: FileService ) {
 
   let b = el;
   let context = b.getContext('2d');
@@ -1224,7 +1256,7 @@ let system = null;
 
 
     }
-  let img = getDraftAsImage(draft, 10, true, use_colors, ms.getShuttles());  
+  let img = getDraftAsImage(draft, 10, floats, use_colors, ms.getShuttles());  
   context.putImageData(img, 30, 30);
 
   context.font = "12px Arial";

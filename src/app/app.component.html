@@ -33,6 +33,7 @@
 
         <div class="logo"></div>
 
+
         <span>AdaCAD</span>
         
 
@@ -118,7 +119,7 @@
 
      
       <!-- <button mat-menu-item >Default Draft View</button> -->
-      <button mat-menu-item [matMenuTriggerFor]="showDrafts">Show Drafts on Dataflow View</button>
+      <button mat-menu-item [matMenuTriggerFor]="showDrafts">Show Drafts on Dataflow by Default</button>
       
       <mat-menu #showDrafts="matMenu">
         <button [class.active]="!this.ws.hide_mixer_drafts" mat-menu-item (click)="setDraftsViewable(false)">yes</button>
@@ -131,7 +132,7 @@
         <button [class.active]="!this.ws.show_advanced_operations" mat-menu-item (click)="setAdvancedOperations(false)">no</button>
       </mat-menu>   
 
-
+      <button mat-menu-item (click)="optimizeWorkspace()">Optimize Workspace</button>
 
 
           <!-- <button mat-menu-item >Optimize for Device</button> -->
@@ -230,7 +231,14 @@
         <mat-toolbar class="footer">
           
           <div class="footer-left">
-      
+            <button 
+            [class.hide]="selected_editor_mode !== 'mixer'" 
+            [class.show]="selected_editor_mode === 'mixer'" 
+            mat-icon-button (click)="zoomToFit()">
+              <i class="fa-solid fa-arrows-to-eye"></i>
+            </button>
+            
+            
       
             <button mat-icon-button (click)="zoomOut()"><i class="fas fa-search-minus"></i></button>         
            
@@ -244,6 +252,8 @@
            
         
             <button  mat-icon-button (click)="zoomIn()"><i class="fas fa-search-plus"></i></button>
+            
+          
             <button  
             mat-icon-button 
             [disabled]="ss.undo_disabled"
@@ -251,6 +261,10 @@
             (click)="undo()" >
             <i class="fa-solid fa-rotate-left"></i>
             </button>
+
+
+
+
       
             <button  
             mat-icon-button 

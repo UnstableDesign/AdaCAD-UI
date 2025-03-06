@@ -42,7 +42,6 @@ import { slope } from '../operations/slope/slope';
 import { spliceinwarps } from '../operations/spliceinwarps/spliceinwarps';
 import { splicein } from '../operations/spliceinwefts/spliceinwefts';
 import { stretch } from '../operations/stretch/stretch';
-import { notation_system } from '../operations/system_notation/system_notation';
 import { tile } from '../operations/tile/tile';
 import { undulatewarps } from '../operations/undulatewarps/undulatewarps';
 import { undulatewefts } from '../operations/undulatewefts/undulatewefts';
@@ -95,7 +94,6 @@ export class OperationService {
     this.dynamic_ops.push(imagemap);
     this.dynamic_ops.push(bwimagemap);
     this.dynamic_ops.push(notation);
-    this.dynamic_ops.push(notation_system);
     this.dynamic_ops.push(weft_profile);
     this.dynamic_ops.push(warp_profile);
     this.dynamic_ops.push(sample_width);

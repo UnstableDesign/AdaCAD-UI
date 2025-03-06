@@ -47,6 +47,7 @@ export class ParameterComponent implements OnInit {
   @Input() paramid:  number;
   @Output() onOperationParamChange = new EventEmitter <any>(); 
   @Output() onFileUpload = new EventEmitter <any>(); 
+  @Output() preventDrag = new EventEmitter <any>(); 
 
 
 
@@ -242,6 +243,7 @@ export class ParameterComponent implements OnInit {
     this.onOperationParamChange.emit({id: this.paramid, value: this.opnode.params[this.paramid], type: this.param.type});
 
   }
+
 
 
 
