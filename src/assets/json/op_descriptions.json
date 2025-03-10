@@ -527,11 +527,11 @@
             "application": "To create drawdown from from a direct loom plan"
         },
         {
-            "name":"profile_view_sketch",
-            "displayname": "profile view sketch",
-            "tags": ["advanced"],
-            "description":"Design a draft from profile view.",
-            "application": "Explore multilayer structures through profile drafting."
+            "name":"cross_section_view",
+            "displayname": "cross section view",
+                "tags": ["advanced"],
+                "description":"Design a draft from cross section view.",
+            "application": "Explore multilayer structures through cross section drafting."
         }
     ],
 
