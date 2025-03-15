@@ -1,7 +1,7 @@
-import { Component, EventEmitter, Input, OnInit, Output, ViewChild, ViewEncapsulation } from '@angular/core';
+import { Component, EventEmitter, Input, OnInit, Output, ViewChild, ViewEncapsulation, ElementRef, OnDestroy, AfterViewInit } from '@angular/core';
 import { AbstractControl, FormControl, UntypedFormControl, ValidationErrors, ValidatorFn, Validators } from '@angular/forms';
 import { MAT_FORM_FIELD_DEFAULT_OPTIONS } from '@angular/material/form-field';
-import { AnalyzedImage, BoolParam, CodeParam, FileParam, IndexedColorImageInstance, MediaInstance, NotationTypeParam, NumParam, OpNode, SelectParam, StringParam } from '../../../../core/model/datatypes';
+import { AnalyzedImage, BoolParam, CodeParam, FileParam, IndexedColorImageInstance, MediaInstance, NotationTypeParam, NumParam, OpNode, SelectParam, StringParam, CanvasParam } from '../../../../core/model/datatypes';
 import { OperationDescriptionsService } from '../../../../core/provider/operation-descriptions.service';
 import { OperationService } from '../../../../core/provider/operation.service';
 import { TreeService } from '../../../../core/provider/tree.service';
@@ -14,6 +14,7 @@ import { ImageeditorComponent } from '../../../../core/modal/imageeditor/imageed
 import { MatDialog } from '@angular/material/dialog';
 import { Index } from '@angular/fire/firestore';
 import { update } from '@angular/fire/database';
+import * as p5 from 'p5';
 
 
 export function regexValidator(nameRe: RegExp): ValidatorFn {
@@ -35,8 +36,8 @@ export function regexValidator(nameRe: RegExp): ValidatorFn {
   //   {provide: MAT_FORM_FIELD_DEFAULT_OPTIONS, useValue: {appearance: 'outline', subscriptSizing: 'dynamic' }}
   // ]
 })
-export class ParameterComponent implements OnInit {
-  
+export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
+
   fc: UntypedFormControl;
   opnode: OpNode;
   name: any;
@@ -57,11 +58,15 @@ export class ParameterComponent implements OnInit {
   stringparam: StringParam;
   selectparam: SelectParam;
   fileparam: FileParam;
+  canvasparam: CanvasParam;
   description: string;
   has_image_uploaded: boolean = false;
   filewarning: string = '';
 
   @ViewChild('autosize') autosize: CdkTextareaAutosize;
+  @ViewChild('p5canvasContainer') p5canvasContainer: ElementRef;
+
+  private p5Instance: any;
 
   constructor(
     public tree: TreeService, 
@@ -130,15 +135,27 @@ export class ParameterComponent implements OnInit {
         //   this.draftparam = <DraftParam> this.param;
         //   this.fc = new FormControl(this.draftparam.value);
         //   break;
-         
-       
-      }
 
+      case 'p5-canvas':
+        this.canvasparam = <CanvasParam>this.param;
+        this.fc = new UntypedFormControl(this.param.value);
+        break;
+    }
+  }
 
+  ngAfterViewInit() {
+    // Initialize canvas if needed
+    if (this.param.type === 'p5-canvas' && this.p5canvasContainer) {
+      // Wait for next tick to ensure ViewChild is available
+      setTimeout(() => this.initializeP5Canvas(), 0);
+    }
+  }
 
-   
-  
-
+  ngOnDestroy() {
+    // Clean up p5 instance if it exists
+    if (this.p5Instance) {
+      this.p5Instance.remove();
+    }
   }
 
   _refreshDirty(){
@@ -208,11 +225,42 @@ export class ParameterComponent implements OnInit {
         this.fc.setValue(value);
         this.onOperationParamChange.emit({id: this.paramid, value: value, type: this.param.type});
         break;
-    }
 
-   
+      case 'p5-canvas':
+        opnode.params[this.paramid] = value;
+        this.fc.setValue(value);
+        this.onOperationParamChange.emit({ id: this.paramid, value: value, type: this.param.type });
+        break;
+    }
   }
 
+  initializeP5Canvas() {
+    if (!this.p5canvasContainer) return;
+
+    // Get operation definition
+    const operationDefinition = this.ops.getOp(this.opnode.name);
+
+    // If operation provides a sketch function, create the P5 instance
+    if (operationDefinition && 'createSketch' in operationDefinition) {
+      this.p5Instance = new p5(
+        operationDefinition.createSketch(
+          this.param,
+          (newValue: any) => {
+            // Update parameter value and notify operation
+            const opnode: OpNode = <OpNode>this.tree.getNode(this.opid);
+            opnode.params[this.paramid] = newValue;
+            this.fc.setValue(newValue);
+            this.onOperationParamChange.emit({
+              id: this.paramid,
+              value: newValue,
+              type: this.param.type
+            });
+          }
+        ),
+        this.p5canvasContainer.nativeElement
+      );
+    }
+  }
 
   openImageEditor(){
   

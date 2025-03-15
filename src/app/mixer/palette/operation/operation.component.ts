@@ -186,6 +186,11 @@ export class OperationComponent implements OnInit {
   }
 
   mousedown(e: any) {
+    // Check if the click is on the p5 canvas
+    if (e.target.closest('.p5-canvas-parameter')) {
+      // Allow the mouse event to reach the canvas
+      return;
+    }
     //this.disable_drag = false;
     e.stopPropagation();
   }

@@ -149,6 +149,13 @@
 </ng-container>
 
 
+<!-- Canvas parameter container -->
+<ng-container *ngIf="param.type === 'p5-canvas'">
+  <div class="p5-canvas-parameter">
+    <label class="p5-canvas-label">{{description || param.dx}}</label>
+    <div #p5canvasContainer class="p5-canvas-container"></div>
+  </div>
+</ng-container>
 
     <ng-container  *ngIf="param.type == 'file'">       
       <div class='file-input-param'>

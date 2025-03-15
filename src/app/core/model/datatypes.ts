@@ -492,7 +492,7 @@ export interface FileSaver{
  */
 export type OperationParam = {
   name: string,
-  type: 'number' | 'boolean' | 'select' | 'file' | 'string' | 'draft' | 'notation_toggle' | 'code';
+  type: 'number' | 'boolean' | 'select' | 'file' | 'string' | 'draft' | 'notation_toggle' | 'code' | 'p5-canvas';
   value: any,
   dx: string
 }
@@ -540,6 +540,15 @@ export type CodeParam = OperationParam & {
 }
 
 
+/**
+* An extension of Param that handles canvas input with interactive P5.js sketch
+* @param value object that stores canvas state data (points, settings, etc.)
+*/
+export type CanvasParam = OperationParam & {
+  value: {
+    [key: string]: any;
+  }
+}
 
 /**
 * An extension of Param that in intended to shape how inlets parse layer notation to generate inlets
@@ -612,12 +621,14 @@ export type Operation = {
  * @param dynamic_param_id which parameter ids should we use to determine the number and value of parameterized input slots
  * @param dynamic_inlet_type dynamic parameters convert parameter inputs to inlets of a given type, this specifies the type of inlet created
  * @param onParamChange a function that executes when a dynamic parameter is changed
+ * @param createSketch optional function that creates a P5.js sketch for canvas parameters
  */
 export type DynamicOperation = Operation &  {
   dynamic_param_id: Array<number>,
   dynamic_param_type: 'number' | 'notation' | 'system' | 'color' | 'static' | 'draft' | 'profile' | 'null',
   onParamChange: ( param_vals: Array<OpParamVal>, inlets: Array<OperationInlet>, inlet_vals: Array<any>, changed_param_id: number, dynamic_param_vals: Array<any>) => Array<any>;
   perform: (param_vals: Array<OpParamVal>, op_inputs: Array<OpInput>) => Promise<Array<Draft>>;
+  createSketch?: (param: any, updateCallback: Function) => Function;
 }
 
 

@@ -133,6 +133,22 @@
     }
 }
 
+.p5-canvas-parameter {
+    width: 100%;
+    padding: 5px;
+
+    .p5-canvas-label {
+        font-size: 12px;
+        margin-bottom: 5px;
+    }
+
+    .p5-canvas-container {
+        width: 100%;
+        border: 1px solid #ccc;
+        background-color: #fff;
+        min-height: 200px;
+    }
+}
 
 
 
