@@ -541,7 +541,7 @@ export type CodeParam = OperationParam & {
 
 
 /**
-* An extension of Param that handles canvas input with interactive P5.js sketch
+* An extension of Param that handles canvas input with interactive p5.js sketch
 * @param value object that stores canvas state data (points, settings, etc.)
 */
 export type CanvasParam = OperationParam & {
@@ -621,7 +621,7 @@ export type Operation = {
  * @param dynamic_param_id which parameter ids should we use to determine the number and value of parameterized input slots
  * @param dynamic_inlet_type dynamic parameters convert parameter inputs to inlets of a given type, this specifies the type of inlet created
  * @param onParamChange a function that executes when a dynamic parameter is changed
- * @param createSketch optional function that creates a P5.js sketch for canvas parameters
+ * @param createSketch optional function that creates a p5.js sketch for canvas parameters
  */
 export type DynamicOperation = Operation &  {
   dynamic_param_id: Array<number>,

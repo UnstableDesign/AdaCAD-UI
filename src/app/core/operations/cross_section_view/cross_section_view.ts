@@ -111,10 +111,9 @@ const onParamChange = (param_vals: Array<OpParamVal>, inlets: Array<OperationInl
     // In this operation, we don't need dynamic inlet changes
     return inlet_vals;
 };
-
-// P5.js sketch creator function
+// p5.js sketch creator function
 const createSketch = (param: any, updateCallback: Function) => {
-    // Return the P5 sketch function
+    // Return the p5 sketch function
     return (p: any) => {
         // Get initial state or use defaults
         const state = param.value || {
@@ -125,10 +124,11 @@ const createSketch = (param: any, updateCallback: Function) => {
         // Points array for storing drawing
         let points = state.points || [];
         let isDragging = false;
+        let isOverClearButton = false;
 
         // Setup function - runs once
         p.setup = () => {
-            console.log('P5.js setup function called');
+            console.log('p5.js setup function called');
             p.createCanvas(300, 200);
             p.background(240);
         };
@@ -172,14 +172,33 @@ const createSketch = (param: any, updateCallback: Function) => {
                 p.textAlign(p.CENTER, p.CENTER);
                 p.text("Click and drag to draw a cross-section curve", 150, 100);
             }
+
+            // Draw clear button
+            isOverClearButton = p.mouseX > 240 && p.mouseX < 290 && p.mouseY > 10 && p.mouseY < 35;
+            p.fill(isOverClearButton ? 220 : 200);
+            p.stroke(180);
+            p.rect(240, 10, 50, 25, 5);
+            p.fill(60);
+            p.noStroke();
+            p.textAlign(p.CENTER, p.CENTER);
+            p.text("Clear", 265, 22);
         };
 
-        // Handle mouse press - start drawing
+        // Handle mouse press - start drawing or clear
         p.mousePressed = () => {
+            // Check if clear button is clicked
+            if (isOverClearButton) {
+                points = [];
+                const newState = {
+                    points: [],
+                    view: { ...state.view }
+                };
+                updateCallback(newState);
+                return;
+            }
+
             // Check if mouse is inside canvas
             if (p.mouseX > 0 && p.mouseX < p.width && p.mouseY > 0 && p.mouseY < p.height) {
-                console.log('Mouse pressed in canvas');
-                points = []; // Reset points
                 isDragging = true;
                 points.push({ x: p.mouseX, y: p.mouseY });
 
@@ -188,14 +207,10 @@ const createSketch = (param: any, updateCallback: Function) => {
                     points: [...points],
                     view: { ...state.view }
                 };
-                
+
                 // Update parameter value
                 updateCallback(newState);
-                p.redraw();
-
-                return false;  // Tells p5.js to prevent default behavior and stop propagation
             }
-            return true; // Allow mouse event to continue if outside canvas
         };
 
         // Handle mouse drag - continue adding points
@@ -205,17 +220,13 @@ const createSketch = (param: any, updateCallback: Function) => {
 
                 // Update state
                 const newState = {
-                    points: points,
+                    points: [...points],
                     view: state.view
                 };
 
                 // Update parameter value
                 updateCallback(newState);
-
-                p.redraw();
-                return false;
             }
-            return true; // Allow mouse event to continue if outside canvas
         };
 
         // Handle mouse release - finish drawing
@@ -235,8 +246,6 @@ const createSketch = (param: any, updateCallback: Function) => {
 
                 // Update parameter value - this triggers operation updates
                 updateCallback(newState);
-
-                p.redraw();
             }
         };
     };
