@@ -235,30 +235,86 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   initializeP5Canvas() {
-    if (!this.p5canvasContainer) return;
+    // This method sets up an interactive p5.js canvas for operations that require it.
+    // Note: The p5.js canvas inside an operation scaled by application CSS. This makes 
+    // the mouse coordinates reported to the sketch incorrect. To fix this, a proxy wraps 
+    // the p5.js instance that intercepts `p.mouseX` and `p.mouseY` and corrects them. 
+
+    if (!this.p5canvasContainer || !this.p5canvasContainer.nativeElement) {
+      console.error("p5canvasContainer not available");
+      return;
+    }
 
     // Get operation definition
     const operationDefinition = this.ops.getOp(this.opnode.name);
 
     // If operation provides a sketch function, create the P5 instance
-    if (operationDefinition && 'createSketch' in operationDefinition) {
-      this.p5Instance = new p5(
-        operationDefinition.createSketch(
-          this.param,
-          (newValue: any) => {
-            // Update parameter value and notify operation
-            const opnode: OpNode = <OpNode>this.tree.getNode(this.opid);
-            opnode.params[this.paramid] = newValue;
-            this.fc.setValue(newValue);
-            this.onOperationParamChange.emit({
-              id: this.paramid,
-              value: newValue,
-              type: this.param.type
-            });
-          }
-        ),
-        this.p5canvasContainer.nativeElement
+    if (operationDefinition && 'createSketch' in operationDefinition && typeof operationDefinition.createSketch === 'function') {
+      const userSketchProvider = operationDefinition.createSketch(
+        this.param,
+        (newState: any) => {
+          this.param.value = newState;
+          this.onParamChange(newState);
+        }
       );
+
+      const sketchWrapper = (actualP5Instance: p5) => {
+        this.p5Instance = actualP5Instance;
+
+        const P5MouseProxyHandler: ProxyHandler<p5> = {
+          get: (target, prop, receiver) => {
+            // target: The actual p5 instance.
+            // receiver: The proxy instance.
+
+            // Intercept mouseX and mouseY getters to apply coordinate scaling.
+            // This corrects for differences between the p5 canvas buffer dimensions
+            // and its display dimensions on the screen.
+            if (prop === 'mouseX') {
+              if (!target.canvas || !(target as any)._setupDone) {
+                const unscaledFallbackX = Reflect.get(target, 'mouseX', receiver); // Get actual p5.mouseX
+                return typeof unscaledFallbackX === 'number' ? unscaledFallbackX : 0;
+              }
+              const rect = target.canvas.getBoundingClientRect();
+              const unscaledMouseX = Reflect.get(target, 'mouseX', receiver); // Get actual p5.mouseX value
+
+              if (rect.width > 0 && target.width > 0 && typeof unscaledMouseX === 'number') {
+                const correctedX = unscaledMouseX * (target.width / rect.width);
+                return correctedX;
+              } else {
+                return typeof unscaledMouseX === 'number' ? unscaledMouseX : 0;
+              }
+            }
+
+            if (prop === 'mouseY') {
+              if (!target.canvas || !(target as any)._setupDone) {
+                const unscaledFallbackY = Reflect.get(target, 'mouseY', receiver);
+                return typeof unscaledFallbackY === 'number' ? unscaledFallbackY : 0;
+              }
+              const rect = target.canvas.getBoundingClientRect();
+              const unscaledMouseY = Reflect.get(target, 'mouseY', receiver); // Get actual p5.mouseY value
+
+              if (rect.height > 0 && target.height > 0 && typeof unscaledMouseY === 'number') {
+                const correctedY = unscaledMouseY * (target.height / rect.height);
+                return correctedY;
+              } else {
+                return typeof unscaledMouseY === 'number' ? unscaledMouseY : 0;
+              }
+            }
+
+            // Delegate all other property access to the original p5 instance.
+            return Reflect.get(target, prop, receiver);
+          },
+        };
+
+        // Use the mouse-correcting proxy.
+        const proxiedP5Instance = new Proxy(actualP5Instance, P5MouseProxyHandler);
+        userSketchProvider(proxiedP5Instance);
+      };
+
+      new p5(sketchWrapper, this.p5canvasContainer.nativeElement);
+
+    } else {
+      console.error("Operation does not provide a valid createSketch function.");
     }
   }
 
