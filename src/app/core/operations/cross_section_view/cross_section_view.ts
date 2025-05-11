@@ -4,6 +4,9 @@ import { Sequence } from "../../model/sequence";
 import { initDraftFromDrawdown, generateMappingFromPattern, warps, wefts } from "../../model/drafts";
 import * as p5 from 'p5';
 
+const CANVAS_WIDTH = 600;
+const CANVAS_HEIGHT = 400;
+
 const name = "cross_section_view";
 const old_names = [];
 
@@ -61,8 +64,8 @@ const perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>): Promi
     // If we have points drawn in the canvas
     if (canvasState && canvasState.points && canvasState.points.length > 0) {
         const points = canvasState.points;
-        const canvasWidth = 300; // Standard canvas width
-        const canvasHeight = 200; // Standard canvas height
+        const canvasWidth = CANVAS_WIDTH; // Standard canvas width
+        const canvasHeight = CANVAS_HEIGHT; // Standard canvas height
 
         // Initialize all cells to 0 (warp down)
         for (let i = 0; i < width; i++) {
@@ -128,8 +131,8 @@ const createSketch = (param: any, updateCallback: Function) => {
 
         // Setup function - runs once
         p.setup = () => {
-            console.log('p5.js setup function called');
-            p.createCanvas(300, 200);
+            console.log('[cross_section_view.ts] p5.js setup function called');
+            p.createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
             p.background(240);
         };
 
@@ -139,10 +142,10 @@ const createSketch = (param: any, updateCallback: Function) => {
 
             // Draw grid
             p.stroke(200);
-            for (let i = 0; i < 300; i += 20) {
-                p.line(i, 0, i, 200);
+            for (let i = 0; i < CANVAS_WIDTH; i += 20) {
+                p.line(i, 0, i, CANVAS_HEIGHT);
             }
-            p.line(0, 100, 300, 100); // Horizontal midline
+            p.line(0, CANVAS_HEIGHT / 2, CANVAS_WIDTH, CANVAS_HEIGHT / 2); // Horizontal midline
 
             // Draw existing points and connecting lines
             if (points.length > 0) {
@@ -170,18 +173,23 @@ const createSketch = (param: any, updateCallback: Function) => {
                 p.fill(100);
                 p.noStroke();
                 p.textAlign(p.CENTER, p.CENTER);
-                p.text("Click and drag to draw a cross-section curve", 150, 100);
+                p.text("Click and drag to draw a cross-section curve", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
             }
 
             // Draw clear button
-            isOverClearButton = p.mouseX > 240 && p.mouseX < 290 && p.mouseY > 10 && p.mouseY < 35;
+            const buttonWidth = 50;
+            const buttonHeight = 25;
+            const buttonMarginX = 10;
+            const buttonY = 10;
+            const buttonX = CANVAS_WIDTH - buttonWidth - buttonMarginX;
+            isOverClearButton = p.mouseX > buttonX && p.mouseX < buttonX + buttonWidth && p.mouseY > buttonY && p.mouseY < buttonY + buttonHeight;
             p.fill(isOverClearButton ? 220 : 200);
             p.stroke(180);
-            p.rect(240, 10, 50, 25, 5);
+            p.rect(buttonX, buttonY, buttonWidth, buttonHeight, 5);
             p.fill(60);
             p.noStroke();
             p.textAlign(p.CENTER, p.CENTER);
-            p.text("Clear", 265, 22);
+            p.text("Clear", buttonX + buttonWidth / 2, buttonY + buttonHeight / 2);
         };
 
         // Handle mouse press - start drawing or clear
@@ -198,7 +206,7 @@ const createSketch = (param: any, updateCallback: Function) => {
             }
 
             // Check if mouse is inside canvas
-            if (p.mouseX > 0 && p.mouseX < p.width && p.mouseY > 0 && p.mouseY < p.height) {
+            if (p.mouseX >= 0 && p.mouseX < CANVAS_WIDTH && p.mouseY >= 0 && p.mouseY < CANVAS_HEIGHT) {
                 isDragging = true;
                 points.push({ x: p.mouseX, y: p.mouseY });
 
@@ -215,7 +223,7 @@ const createSketch = (param: any, updateCallback: Function) => {
 
         // Handle mouse drag - continue adding points
         p.mouseDragged = () => {
-            if (isDragging && p.mouseX > 0 && p.mouseX < p.width && p.mouseY > 0 && p.mouseY < p.height) {
+            if (isDragging && p.mouseX >= 0 && p.mouseX < CANVAS_WIDTH && p.mouseY >= 0 && p.mouseY < CANVAS_HEIGHT) {
                 points.push({ x: p.mouseX, y: p.mouseY });
 
                 // Update state
@@ -233,7 +241,7 @@ const createSketch = (param: any, updateCallback: Function) => {
         p.mouseReleased = () => {
             if (isDragging) {
                 isDragging = false;
-                console.log('Mouse released in canvas');
+                console.log('[cross_section_view.ts] Mouse released in canvas');
 
                 // Sort points by x coordinate
                 points.sort((a, b) => a.x - b.x);

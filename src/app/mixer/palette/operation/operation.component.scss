@@ -213,12 +213,28 @@ button.is-primary.is-active{
         gap: 8px;
         font-size: 14px;
         flex: 1 1 auto;
+        flex-wrap: wrap;
+        box-sizing: border-box;
 
 
 }
 
 .param{
     display: flex;
+}
+
+.canvas-params-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding: 0px 8px 8px 8px;
+    gap: 8px;
+    box-sizing: border-box;
+}
+
+.param-canvas {
+    display: flex;
+    width: 100%;
 }
 
 // .param:hover{

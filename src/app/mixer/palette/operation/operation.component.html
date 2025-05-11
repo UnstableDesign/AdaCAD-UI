@@ -125,7 +125,7 @@ cdkDrag
         
           <ng-container *ngFor="let param of op.params; let i = index">
             
-            <app-parameter class="param" 
+            <app-parameter *ngIf="param.type !== 'p5-canvas'" class="param" 
             [param]='param' 
             [opid]='id' 
             [paramid]='i'
@@ -143,6 +143,21 @@ cdkDrag
 
       </div>
 
+    <!-- Canvas Parameters Area -->
+    <div class="canvas-params-container">
+      <ng-container *ngFor="let param of op.params; let i = index">
+        <app-parameter *ngIf="param.type === 'p5-canvas'" class="param-canvas" 
+        [param]='param'
+        [opid]='id'
+        [paramid]='i'
+        (onOperationParamChange) = onParamChange($event)
+        (onFileUpload) = handleFile($event)
+        (preventDrag) = disableDrag()
+        >
+      </app-parameter>
+
+      </ng-container>
+    </div>
 
       <div class="outputs" (dblclick)="onDoubleClick($event)">
         <app-draftcontainer class="draftrendering from_operation" 
