@@ -147,7 +147,15 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
     // Initialize canvas if needed
     if (this.param.type === 'p5-canvas' && this.p5canvasContainer) {
       // Wait for next tick to ensure ViewChild is available
-      setTimeout(() => this.initializeP5Canvas(), 0);
+      // Fetch the initial state for the first load - This determines the initial config
+      const initialParamValue = (<CanvasParam>this.param)?.value;
+      if (!initialParamValue || !initialParamValue.config) {
+        console.error(`[ParameterComponent ${this.opid}] Could not get initial param config in ngAfterViewInit.`);
+        return;
+      }
+      const initialConfig = initialParamValue.config;
+
+      setTimeout(() => this.initializeP5Canvas(initialConfig), 0);
     }
   }
 
@@ -166,6 +174,40 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
     this.refresh_dirty = false;
     this.onParamChange(val);
     return val;
+  }
+
+  /**
+   * Public method called by parent components to explicitly reset the p5 sketch.
+   * @param latestConfig The latest configuration object derived from non-canvas params.
+   */
+  public triggerSketchReset (latestConfig: object): void {
+    if (this.param.type === 'p5-canvas') {
+      if (!latestConfig) {
+        console.error('[ParameterComponent] triggerSketchReset called without latestConfig for op:', this.opid);
+        return;
+      }
+      
+      this._resetSketch(latestConfig);
+    }
+  }
+
+  /**
+   * Private helper to destroy the current p5 instance and re-initialize it
+   * with the provided configuration.
+   * @param latestConfig The latest configuration object for the sketch.
+   */
+  private _resetSketch (latestConfig: object): void {
+    if (this.p5Instance) {
+      try {
+        this.p5Instance.remove();
+      } catch (e) {
+        console.error('[ParameterComponent] Error removing p5 instance:', e);
+      }
+      this.p5Instance = null;
+    }
+    setTimeout(() => {
+      this.initializeP5Canvas(latestConfig);
+    }, 0);
   }
 
   /**
@@ -234,41 +276,81 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  initializeP5Canvas() {
-    // This method sets up an interactive p5.js canvas for operations that require it.
-    // Note: The p5.js canvas inside an operation scaled by application CSS. This makes 
-    // the mouse coordinates reported to the sketch incorrect. To fix this, a proxy wraps 
-    // the p5.js instance that intercepts `p.mouseX` and `p.mouseY` and corrects them. 
+  initializeP5Canvas (currentConfig: object) {
+    // Setup an interactive p5.js canvas for operations that use it
 
     if (!this.p5canvasContainer || !this.p5canvasContainer.nativeElement) {
-      console.error("p5canvasContainer not available");
+      console.error(`[ParameterComponent ${this.opid}] p5canvasContainer not available.`);
       return;
     }
 
-    // Get operation definition
-    const operationDefinition = this.ops.getOp(this.opnode.name);
+    if (this.param.type !== 'p5-canvas') {
+      console.error(`[ParameterComponent ${this.opid}] This component's own param Input is not type 'p5-canvas'. Type: ${this.param.type}`);
+      return;
+    }
+
+    // --- Get the last known canvasState and view from this.param
+    const lastCanvasState = (<CanvasParam>this.param)?.value?.canvasState;
+    const lastView = (<CanvasParam>this.param)?.value?.view;
+
+    if (lastCanvasState === undefined || lastView === undefined) {
+      console.error(`[ParameterComponent ${this.opid}] Could not retrieve last canvasState or view from internal param value.`);
+      return;
+    }
+
+    const opNodeName = this.tree.getOpNode(this.opid)?.name;
+    if (!opNodeName) {
+      console.error(`[ParameterComponent ${this.opid}] Could not determine operation name.`);
+      return;
+    }
+    const operationDefinition = this.ops.getOp(opNodeName);
 
     // If operation provides a sketch function, create the P5 instance
     if (operationDefinition && 'createSketch' in operationDefinition && typeof operationDefinition.createSketch === 'function') {
-      const userSketchProvider = operationDefinition.createSketch(
-        this.param,
-        (newState: any) => {
-          this.param.value = newState;
-          this.onParamChange(newState);
+
+      // Construct paramForSketch using last state + current config
+      const paramForSketch: CanvasParam = {
+        ...(this.param as CanvasParam),   // Use the structure/metadata from our Input param
+        value: {                          // Reconstruct the value object
+          canvasState: lastCanvasState,
+          config: currentConfig,
+          view: lastView
         }
-      );
+      };
 
+      const updateCallbackFn = (newState: any) => {
+        // Update the local component param value (important for subsequent saves/internal updates)
+        this.param.value = newState;
+        // Emit the change event
+        this.onParamChange(newState);
+      };
+
+      // Debounce or ensure cleanup happens correctly if resets are rapid
+      if (this.p5Instance) {
+        try {
+          this.p5Instance.remove();
+        } catch (e) {
+          console.error("[ParameterComponent] Error removing previous p5 instance:", e);
+        }
+        this.p5Instance = null;
+      }
+      
+      const userSketchProvider = operationDefinition.createSketch(paramForSketch, updateCallbackFn);
+
+      // Define the wrapper for p5 instantiation, including the mouse proxy
       const sketchWrapper = (actualP5Instance: p5) => {
-        this.p5Instance = actualP5Instance;
+        this.p5Instance = actualP5Instance; // Store the p5 instance
 
+        // The p5.js canvas is inside an operation that gets scaled by AdaCAD application CSS
+        // This makes the mouse coordinates inside a sketch incorrect. This proxy corrects that.
+        // It wraps the p5.js instance and intercepts `p.mouseX` and `p.mouseY` and correct them.
+        // The error is between the p5 canvas buffer dimensions and the display dimensions.
         const P5MouseProxyHandler: ProxyHandler<p5> = {
           get: (target, prop, receiver) => {
             // target: The actual p5 instance.
             // receiver: The proxy instance.
 
-            // Intercept mouseX and mouseY getters to apply coordinate scaling.
-            // This corrects for differences between the p5 canvas buffer dimensions
-            // and its display dimensions on the screen.
+            // Intercept mouseX/Y
             if (prop === 'mouseX') {
               if (!target.canvas || !(target as any)._setupDone) {
                 const unscaledFallbackX = Reflect.get(target, 'mouseX', receiver); // Get actual p5.mouseX
@@ -276,15 +358,11 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
               }
               const rect = target.canvas.getBoundingClientRect();
               const unscaledMouseX = Reflect.get(target, 'mouseX', receiver); // Get actual p5.mouseX value
-
               if (rect.width > 0 && target.width > 0 && typeof unscaledMouseX === 'number') {
-                const correctedX = unscaledMouseX * (target.width / rect.width);
-                return correctedX;
-              } else {
-                return typeof unscaledMouseX === 'number' ? unscaledMouseX : 0;
+                return unscaledMouseX * (target.width / rect.width);
               }
+              return typeof unscaledMouseX === 'number' ? unscaledMouseX : 0;
             }
-
             if (prop === 'mouseY') {
               if (!target.canvas || !(target as any)._setupDone) {
                 const unscaledFallbackY = Reflect.get(target, 'mouseY', receiver);
@@ -292,13 +370,10 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
               }
               const rect = target.canvas.getBoundingClientRect();
               const unscaledMouseY = Reflect.get(target, 'mouseY', receiver); // Get actual p5.mouseY value
-
               if (rect.height > 0 && target.height > 0 && typeof unscaledMouseY === 'number') {
-                const correctedY = unscaledMouseY * (target.height / rect.height);
-                return correctedY;
-              } else {
-                return typeof unscaledMouseY === 'number' ? unscaledMouseY : 0;
+                return unscaledMouseY * (target.height / rect.height);
               }
+              return typeof unscaledMouseY === 'number' ? unscaledMouseY : 0;
             }
 
             // Delegate all other property access to the original p5 instance.
@@ -311,10 +386,11 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
         userSketchProvider(proxiedP5Instance);
       };
 
+      // Instantiate p5 with the wrapper
       new p5(sketchWrapper, this.p5canvasContainer.nativeElement);
 
     } else {
-      console.error("Operation does not provide a valid createSketch function.");
+      console.error("[ParameterComponent] An operation with p5-canvas type did not provide a valid createSketch function.");
     }
   }
 

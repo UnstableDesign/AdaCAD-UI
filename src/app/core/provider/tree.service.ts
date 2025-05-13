@@ -106,7 +106,7 @@ export class TreeService {
    * @param value the value at that parameter
    * @returns a list of inlet values to add.
    */
-   onDynanmicOperationParamChange(opid: number, name: string, inlets: Array<any>, param_id: number, param_val: any) : Array<any>{
+   onDynamicOperationParamChange(opid: number, name: string, inlets: Array<any>, param_id: number, param_val: any) : Array<any>{
 
       const op = <DynamicOperation> this.ops.getOp(name);
       const param_type = op.params[param_id].type
@@ -137,7 +137,7 @@ export class TreeService {
    * @param entry the upload entry associated with this node or null if there was no upload associated
    * @param name the name of the operation
    * @param params the parameters to input
-   * @param inlets an array containing the paramteres that get mapped to inputs at each inlets
+   * @param inlets an array containing the parameters that get mapped to inputs at each inlets
    * @returns the node and the entry
    */
    loadOpData(entry: {prev_id: number, cur_id: number}, name: string, params:Array<any>, inlets: Array<any>) : Promise<{on: OpNode, entry:{prev_id: number, cur_id: number}}>{
@@ -202,7 +202,7 @@ export class TreeService {
           const op = <DynamicOperation> this.ops.getOp(name);
           (<OpNode> node).params = params_out.slice()
           //this just forces the inlets to generate by simulating a parameter change
-          let dynamic_inlets = this.onDynanmicOperationParamChange(node.id, name, inlets, op.dynamic_param_id[0], op.params[op.dynamic_param_id[0]].value);
+          let dynamic_inlets = this.onDynamicOperationParamChange(node.id, name, inlets, op.dynamic_param_id[0], op.params[op.dynamic_param_id[0]].value);
           
           inlets = dynamic_inlets.slice();
         }

@@ -2152,10 +2152,27 @@ pasteConnection(from: number, to: number, inlet: number){
    * @param obj with attribute id describing the operation that called this
    * @returns 
    */
-   async operationParamChanged(obj: {id: number, prior_inlet_vals: Array<any>}){
+   async operationParamChanged(obj: {id: number, type?: string, prior_inlet_vals: Array<any>}){
     console.log("OPERATION PARAM CHANGED")
 
-    if(obj === null) return;
+    if(obj === null || obj.id === undefined) return;
+
+    // --- Start of Logic for resetting p5-canvas operations ---
+    const opComponentInstance = this.tree.getComponent(obj.id) as OperationComponent;
+    if (opComponentInstance && typeof opComponentInstance.triggerCanvasResetIfNeeded === 'function') {
+      if (obj.type !== undefined) { // Ensure type is present
+        // Calling triggerCanvasResetIfNeeded on OpComponent
+        opComponentInstance.triggerCanvasResetIfNeeded(obj.type);
+      }
+    } else {
+      if (!opComponentInstance) {
+        console.warn(`[PaletteComponent] Could not find OperationComponent instance for ID: ${obj.id}`);
+      }
+      if (opComponentInstance && typeof opComponentInstance.triggerCanvasResetIfNeeded !== 'function') {
+        console.warn(`[PaletteComponent] OperationComponent ${obj.id} does not have triggerCanvasResetIfNeeded method.`);
+      }
+    }
+    // --- End of Logic for resetting p5-canvas operations ---
 
     console.log("SWEEP INLETS")
     return this.tree.sweepInlets(obj.id, obj.prior_inlet_vals)

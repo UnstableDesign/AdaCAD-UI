@@ -529,8 +529,8 @@
         {
             "name":"cross_section_view",
             "displayname": "cross section view",
-                "tags": ["advanced"],
-                "description":"Design a draft from cross section view.",
+            "tags": ["advanced"],
+            "description":"Design a draft from cross section view.",
             "application": "Explore multilayer structures through cross section drafting."
         }
     ],

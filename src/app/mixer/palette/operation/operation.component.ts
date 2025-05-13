@@ -380,7 +380,7 @@ export class OperationComponent implements OnInit {
    * @param id an object containing the id of hte parameter that has changed
    * @param value 
    */
-  onParamChange(obj: any){
+  onParamChange (obj: { id: number, value: any, type: string; }){
     const opnode = <OpNode> this.tree.getNode(this.id);
     const original_inlets = this.opnode.inlets.slice();
 
@@ -404,7 +404,7 @@ export class OperationComponent implements OnInit {
           
         }
 
-        this.opnode.inlets = this.tree.onDynanmicOperationParamChange(this.id, this.name, opnode.inlets, obj.id, obj.value) 
+        this.opnode.inlets = this.tree.onDynamicOperationParamChange(this.id, this.name, opnode.inlets, obj.id, obj.value) 
 
 
         this.hasInlets = opnode.inlets.length > 0;
@@ -428,7 +428,15 @@ export class OperationComponent implements OnInit {
 
     }
     
-    this.onOperationParamChange.emit({id: this.id, prior_inlet_vals: original_inlets});
+
+    // Include parameter info to allow p5-canvas operations to reset on operation param changes
+    this.onOperationParamChange.emit({
+      id: this.id,            // Operation ID
+      paramId: obj.id,        // Original parameter ID that changed
+      value: obj.value,       // New value
+      type: obj.type,         // Type of the parameter that changed
+      prior_inlet_vals: original_inlets // Inlet state before dynamic changes
+    });
   }
 
   drawImagePreview(){
@@ -605,4 +613,47 @@ export class OperationComponent implements OnInit {
   
  
 
+  /**
+   * Public method called by parent components (e.g., PaletteComponent) when any parameter changes.
+   * If the changed parameter wasn't the canvas itself, it triggers a reset on the canvas parameter component,
+   * passing the latest configuration derived from non-canvas parameters.
+   */
+  public triggerCanvasResetIfNeeded (changedParamType: string): void {
+    const canvasParamIndex = this.op.params.findIndex(p => p.type === 'p5-canvas');
+
+    if (canvasParamIndex !== -1 && changedParamType !== 'p5-canvas') {
+
+      const currentNodeState = this.tree.getOpNode(this.id);
+      if (!currentNodeState || !currentNodeState.params) {
+        // Could not fetch current OpNode state or params from TreeService for canvas reset
+        return;
+      }
+
+      const latestConfig = {};
+      this.op.params.forEach((paramDef, index) => {
+        if (paramDef.type !== 'p5-canvas') {
+          const paramDisplayName = paramDef.name;
+          let configKey = '';
+          switch (paramDisplayName) {
+            case 'Number of Warps': configKey = 'numWarps'; break;
+            case 'Warp Systems': configKey = 'warpSystems'; break;
+            case 'Weft Systems': configKey = 'weftSystems'; break;
+            default:
+              // Fallback for unmapped params, or could be stricter
+              configKey = paramDisplayName.toLowerCase().replace(/\s+/g, '');
+              console.warn(`[OperationComponent ${this.id}] Unmapped param display name '${paramDisplayName}' for config. Using fallback key '${configKey}'.`);
+          }
+          latestConfig[configKey] = currentNodeState.params[index] ?? paramDef.value; // Use current value or default
+        }
+      });
+
+      const paramComp = this.paramsComps?.find(comp => comp.param.type === 'p5-canvas');
+
+      if (paramComp) {
+        paramComp.triggerSketchReset(latestConfig);
+      } else {
+        // Could not find p5-canvas ParameterComponent to trigger reset
+      }
+    }
+  }
 }
