@@ -9,6 +9,8 @@ const CANVAS_HEIGHT = 400;
 
 const name = "cross_section_view";
 const old_names = [];
+const dynamic_param_id = [1, 2, 3]; // Indices of num_warps, warp_systems, weft_systems;
+const dynamic_param_type = 'null';
 
 // Canvas parameter - stores canvas state and configuration for the sketch
 const canvasParam: CanvasParam = {
@@ -68,7 +70,7 @@ const inlets = [];
 
 // Main perform function - placeholder for now
 const perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>): Promise<Array<Draft>> => {
-    console.log("perform called with params:", op_params);
+    // console.log("perform called with params:", op_params);
 
     // Step 1: Data Preparation
     // 1.1: Retrieve Inputs
@@ -136,7 +138,6 @@ const perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>): Promi
 
     // Handle Empty Interactions: If allInteractions is empty, return a default blank draft.
     if (allInteractions.length === 0) {
-        console.log("CrossSectionView: No interactions found, returning blank draft.");
         let pattern = new Sequence.TwoD();
         let row = new Sequence.OneD();
         const currentNumWarps = numWarps > 0 ? numWarps : 1;
@@ -165,8 +166,6 @@ const perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>): Promi
         }
         return a.sequence - b.sequence;
     });
-
-    // console.log("allInteractions sorted:", JSON.parse(JSON.stringify(allInteractions)));
 
     // Step 2: Identify weftPasses (Logical Draft Rows)
     const weftPasses: Array<{
@@ -271,8 +270,6 @@ const perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>): Promi
         }
     }
 
-    // console.log("weftPasses identified:", JSON.parse(JSON.stringify(weftPasses)));
-
     // Step 3: Generate Draft Rows from weftPasses
     const pattern = new Sequence.TwoD();
     const rowSystemMappingArray: Array<number> = [];
@@ -319,7 +316,6 @@ const perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>): Promi
     // Or if warpData was empty/invalid for cell logic.
     // This ensures a valid, if perhaps empty or minimal, draft is created.
     if (pattern.wefts() === 0) {
-        console.log("CrossSectionView: No weft passes resulted in rows, creating a blank draft row.");
         let row = new Sequence.OneD();
         const currentNumWarpsFallback = numWarps > 0 ? numWarps : 1;
         row.pushMultiple(0, currentNumWarpsFallback);
@@ -372,7 +368,7 @@ const createSketch = (param: any, updateCallback: Function) => {
             "#F4A7B9", "#A7C7E7", "#C6E2E9", "#FAD6A5", "#D5AAFF", "#B0E57C",
             "#FFD700", "#FFB347", "#87CEFA", "#E6E6FA", "#FFE4E1", "#C1F0F6"
         ];
-        const SKETCH_TOP_MARGIN = 140;
+        const SKETCH_TOP_MARGIN = 60;
         const SKETCH_LEFT_MARGIN = 60;
         const SKETCH_CANVAS_WIDTH = CANVAS_WIDTH; // AdaCAD op constant
         const SKETCH_CANVAS_HEIGHT = CANVAS_HEIGHT; // AdaCAD op constant
@@ -448,8 +444,6 @@ const createSketch = (param: any, updateCallback: Function) => {
                     bottomWeft: []
                 });
             }
-            console.log("Initialized warpData:", JSON.parse(JSON.stringify(warpData)));
-            console.log("Initialized dotFills:", JSON.parse(JSON.stringify(dotFills)));
         };
 
         const getDotInfo = (dotOriginalIndex: number) => {
@@ -475,7 +469,6 @@ const createSketch = (param: any, updateCallback: Function) => {
                 }).filter(a => a.sequence != null); // clean up if needed
             }
             if (clickSequence > 0) clickSequence--;
-            // console.log("Updated sequence numbers, new clickSequence:", clickSequence, "warpData:", JSON.parse(JSON.stringify(warpData)));
         };
 
         const resetSketchFull = () => {
@@ -492,6 +485,7 @@ const createSketch = (param: any, updateCallback: Function) => {
             p.createCanvas(SKETCH_CANVAS_WIDTH, SKETCH_CANVAS_HEIGHT);
             p.textSize(14);
             initializeWarpDataAndDots(); // Initial setup of data structures and dot positions
+            callUpdate(); // Ensure initial state is propagated
             if (activeWeft === null) {
                 p.noLoop();
             }
@@ -704,7 +698,6 @@ const createSketch = (param: any, updateCallback: Function) => {
                             }).filter(spline => spline.dots.length >= (spline.closed ? 1 : 2)); // keep splines with enough points
 
                             currentSpline = currentSpline.filter(idx => idx !== dotOriginalIndex);
-                            console.log(`Removed weft ${activeWeft} from dot ${dotOriginalIndex}, warpData:`, JSON.parse(JSON.stringify(warpData)));
                         }
                         // ADDING a weft assignment or starting/continuing/closing a spline
                         else {
@@ -776,8 +769,6 @@ const createSketch = (param: any, updateCallback: Function) => {
                                 }
                                 if (currentSpline.length === 1) p.loop(); // ensure draw updates for sticky line if we just started
                             }
-                            console.log(`Added/updated weft ${activeWeft} to dot ${dotOriginalIndex}, currentSpline: ${JSON.stringify(currentSpline)}, permanentSplines: ${JSON.stringify(permanentSplines)}`);
-                            console.log(`warpData:`, JSON.parse(JSON.stringify(warpData)));
                         }
                         clickedOnUIElement = true;
                         callUpdate();
@@ -809,8 +800,8 @@ export const cross_section_view: DynamicOperation = {
     perform,
     generateName,
     // Required properties for DynamicOperation
-    dynamic_param_id: [1, 2, 3], // Indices of num_warps, warp_systems, weft_systems
-    dynamic_param_type: 'null',
+    dynamic_param_id,
+    dynamic_param_type,
     onParamChange,
     createSketch
 };
