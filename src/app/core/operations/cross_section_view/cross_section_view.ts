@@ -20,8 +20,9 @@ const canvasParam: CanvasParam = {
             selectedDots: [], // Array of dot originalIndices
             dotFills: [],     // Array<Array<number>>: dotFills[dotOriginalIndex] = [weftId1, weftId2...]
             permanentSplines: [], // format: { weft: number, dots: number[], closed: boolean }
-            warpData: [],       // format: Array<{ warpSys: number, topWeft: Array<{weft: number, sequence: number}>, bottomWeft: Array<{weft: number, sequence: number}> }>
-            clickSequence: 0
+            warpData: [],       // format: Array<{ warpSys: number, topWeft: Array<{weft: number, sequence: number, pathId: number}>, bottomWeft: Array<{weft: number, sequence: number, pathId: number}> }>
+            clickSequence: 0,
+            currentPathId: 0
         },
         config: {
             numWarps: 8,
@@ -68,21 +69,289 @@ const inlets = [];
 // Main perform function - placeholder for now
 const perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>): Promise<Array<Draft>> => {
     console.log("perform called with params:", op_params);
-    
-    const num_warps_val = getOpParamValById(1, op_params); // Index of num_warps_param
 
-    let pattern = new Sequence.TwoD();
-    let row = new Sequence.OneD();
-    row.pushMultiple(0, num_warps_val); // Create a blank row with the specified number of warps
-    pattern.pushWeftSequence(row.val());
+    // Step 1: Data Preparation
+    // 1.1: Retrieve Inputs
+    if (!op_params || op_params.length === 0 || !op_params[0] || !op_params[0].val) {
+        console.error("CrossSectionView: Invalid op_params received.");
+        // Return a very basic default draft if params are malformed
+        const emptyPattern = new Sequence.TwoD();
+        emptyPattern.pushWeftSequence(new Sequence.OneD([0]).val()); // 1x1 white cell
+        return Promise.resolve([initDraftFromDrawdown(emptyPattern.export())]);
+    }
 
-    let d = initDraftFromDrawdown(pattern.export());
-    // System/shuttle mappings can be minimal or omitted if not meaningful for blank draft
-    d.colSystemMapping = Array(num_warps_val).fill(0);
-    d.rowSystemMapping = [0];
-    d.colShuttleMapping = Array(num_warps_val).fill(0);
-    d.rowShuttleMapping = [0];
+    const canvasParamContainer = op_params[0];
+    const canvasParamValue = canvasParamContainer.val;
 
+    if (!canvasParamValue || !canvasParamValue.canvasState || !canvasParamValue.config) {
+        console.error("CrossSectionView: canvasState or config is missing.");
+        const emptyPattern = new Sequence.TwoD();
+        emptyPattern.pushWeftSequence(new Sequence.OneD([0]).val());
+        return Promise.resolve([initDraftFromDrawdown(emptyPattern.export())]);
+    }
+
+    const canvasState = canvasParamValue.canvasState;
+    const config = canvasParamValue.config;
+    const numWarps: number = config.numWarps;
+    const warpData: Array<{ warpSys: number, topWeft: Array<{ weft: number, sequence: number, pathId: number }>, bottomWeft: Array<{ weft: number, sequence: number, pathId: number }> }> = canvasState.warpData || [];
+
+    // 1.2: Create allInteractions List
+    const allInteractions: Array<{
+        weftId: number,
+        sequence: number,
+        pathId: number,
+        warpIdx: number,
+        isTopInteraction: boolean,
+        originalWarpSys: number
+    }> = [];
+
+    if (warpData) {
+        warpData.forEach((warp_column_data, current_warp_idx) => {
+            if (warp_column_data.topWeft) {
+                warp_column_data.topWeft.forEach(entry => {
+                    allInteractions.push({
+                        weftId: entry.weft,
+                        sequence: entry.sequence,
+                        pathId: entry.pathId,
+                        warpIdx: current_warp_idx,
+                        isTopInteraction: true,
+                        originalWarpSys: warp_column_data.warpSys
+                    });
+                });
+            }
+            if (warp_column_data.bottomWeft) {
+                warp_column_data.bottomWeft.forEach(entry => {
+                    allInteractions.push({
+                        weftId: entry.weft,
+                        sequence: entry.sequence,
+                        pathId: entry.pathId,
+                        warpIdx: current_warp_idx,
+                        isTopInteraction: false,
+                        originalWarpSys: warp_column_data.warpSys
+                    });
+                });
+            }
+        });
+    }
+
+    // Handle Empty Interactions: If allInteractions is empty, return a default blank draft.
+    if (allInteractions.length === 0) {
+        console.log("CrossSectionView: No interactions found, returning blank draft.");
+        let pattern = new Sequence.TwoD();
+        let row = new Sequence.OneD();
+        const currentNumWarps = numWarps > 0 ? numWarps : 1;
+        row.pushMultiple(0, currentNumWarps);
+        pattern.pushWeftSequence(row.val());
+        let d = initDraftFromDrawdown(pattern.export());
+
+        // For Issue 3 Fix & robust Issue 1 handling: Re-derive colSystemMapping directly from config for a truly blank state.
+        d.colSystemMapping = [];
+        const currentWarpSystems = config.warpSystems > 0 ? config.warpSystems : 1;
+        for (let i = 0; i < currentNumWarps; i++) {
+            d.colSystemMapping.push(i % currentWarpSystems);
+        }
+
+        d.rowSystemMapping = [0];
+        d.colShuttleMapping = Array(currentNumWarps).fill(0);
+        d.rowShuttleMapping = [0];
+        d.gen_name = `cross section ${currentNumWarps}x${d.drawdown.length} (blank)`; // Update height for gen_name
+        return Promise.resolve([d]);
+    }
+
+    // 1.3: Sort allInteractions
+    allInteractions.sort((a, b) => {
+        if (a.pathId !== b.pathId) {
+            return a.pathId - b.pathId;
+        }
+        return a.sequence - b.sequence;
+    });
+
+    // console.log("allInteractions sorted:", JSON.parse(JSON.stringify(allInteractions)));
+
+    // Step 2: Identify weftPasses (Logical Draft Rows)
+    const weftPasses: Array<{
+        weftId: number,
+        interactions: Array<typeof allInteractions[0]>,
+        impliedTravelWarpSys: number
+    }> = [];
+
+    if (allInteractions.length > 0) {
+        let currentPassInteractions: Array<typeof allInteractions[0]> = [];
+        let currentWarpIdxTrend: 'increasing' | 'decreasing' | 'stationary' | 'none' = 'none';
+
+        for (let i = 0; i < allInteractions.length; i++) {
+            const currentInteraction = allInteractions[i];
+            const prevInteraction = i > 0 ? allInteractions[i - 1] : null;
+
+            let startNewPass = false;
+
+            // Rule 1: Change in pathId
+            if (prevInteraction && currentInteraction.pathId !== prevInteraction.pathId) {
+                startNewPass = true;
+            }
+            // Rule 2: Sequential Top/Bottom Interaction on the Same Warp
+            else if (prevInteraction &&
+                currentInteraction.pathId === prevInteraction.pathId &&
+                currentInteraction.weftId === prevInteraction.weftId &&
+                currentInteraction.warpIdx === prevInteraction.warpIdx &&
+                currentInteraction.isTopInteraction !== prevInteraction.isTopInteraction &&
+                currentInteraction.sequence === prevInteraction.sequence + 1) {
+                startNewPass = true;
+            }
+            // Rule 3: "Turn" Detection by warpIdx Trend Reversal
+            else if (prevInteraction && currentPassInteractions.length > 0 && // Ensure there's a pass to evaluate trend against
+                currentInteraction.pathId === prevInteraction.pathId &&
+                currentInteraction.weftId === prevInteraction.weftId) {
+
+                const lastInteractionInCurrentPass = currentPassInteractions[currentPassInteractions.length - 1];
+                let newTrend: 'increasing' | 'decreasing' | 'stationary' = 'stationary';
+
+                if (currentInteraction.warpIdx > lastInteractionInCurrentPass.warpIdx) {
+                    newTrend = 'increasing';
+                } else if (currentInteraction.warpIdx < lastInteractionInCurrentPass.warpIdx) {
+                    newTrend = 'decreasing';
+                }
+
+                if (currentPassInteractions.length === 1 && lastInteractionInCurrentPass.warpIdx !== currentInteraction.warpIdx) {
+                    // First segment of a pass, establish initial trend
+                    currentWarpIdxTrend = newTrend;
+                } else if (currentWarpIdxTrend !== 'none' && currentWarpIdxTrend !== 'stationary' && newTrend !== 'stationary' && currentWarpIdxTrend !== newTrend) {
+                    // Trend has reversed from increasing to decreasing or vice-versa
+                    startNewPass = true;
+                }
+            }
+
+            if (startNewPass && currentPassInteractions.length > 0) {
+                weftPasses.push({
+                    weftId: currentPassInteractions[0].weftId,
+                    interactions: [...currentPassInteractions],
+                    impliedTravelWarpSys: currentPassInteractions[0].originalWarpSys
+                });
+                currentPassInteractions = [];
+                currentWarpIdxTrend = 'none'; // Reset trend for the new pass
+            }
+
+            currentPassInteractions.push(currentInteraction);
+
+            // Update trend if this is the first interaction of a potentially new pass or if pass continues
+            if (currentPassInteractions.length === 1) {
+                // Initial interaction of a pass doesn't define a trend yet unless there's a next one to compare
+            } else if (currentPassInteractions.length > 1) {
+                const firstInPass = currentPassInteractions[0];
+                const lastInPass = currentPassInteractions[currentPassInteractions.length - 1]; // this is currentInteraction
+                if (lastInPass.warpIdx > firstInPass.warpIdx) {
+                    currentWarpIdxTrend = 'increasing';
+                } else if (lastInPass.warpIdx < firstInPass.warpIdx) {
+                    currentWarpIdxTrend = 'decreasing';
+                } else {
+                    // If multiple interactions on the same warp, check against the last *different* warpIdx if possible
+                    // For simplicity, if subsequent points are on the same warp as the first point, trend is stationary for now
+                    // A more robust trend detection might look back further for the last different warpIdx.
+                    let trendAnchor = firstInPass;
+                    for (let k = currentPassInteractions.length - 2; k >= 0; k--) {
+                        if (currentPassInteractions[k].warpIdx !== lastInPass.warpIdx) {
+                            trendAnchor = currentPassInteractions[k];
+                            break;
+                        }
+                    }
+                    if (lastInPass.warpIdx > trendAnchor.warpIdx) currentWarpIdxTrend = 'increasing';
+                    else if (lastInPass.warpIdx < trendAnchor.warpIdx) currentWarpIdxTrend = 'decreasing';
+                    else currentWarpIdxTrend = 'stationary';
+                }
+            }
+        }
+
+        // Add the last pass if any interactions are pending
+        if (currentPassInteractions.length > 0) {
+            weftPasses.push({
+                weftId: currentPassInteractions[0].weftId,
+                interactions: [...currentPassInteractions],
+                impliedTravelWarpSys: currentPassInteractions[0].originalWarpSys
+            });
+        }
+    }
+
+    // console.log("weftPasses identified:", JSON.parse(JSON.stringify(weftPasses)));
+
+    // Step 3: Generate Draft Rows from weftPasses
+    const pattern = new Sequence.TwoD();
+    const rowSystemMappingArray: Array<number> = [];
+
+    if (warpData && warpData.length > 0) { // Ensure warpData is available for targetCellWarpSys
+        weftPasses.forEach(weftPass => {
+            const currentRow = new Sequence.OneD();
+            const travelWarpSys = weftPass.impliedTravelWarpSys;
+            const currentPassWeftId = weftPass.weftId;
+
+            // As per plan clarification 3.4: Initialize rowSystemMappingArray before the loop, then add currentPassWeftId.
+            // This was already done by declaring rowSystemMappingArray outside this loop.
+            // For Issue 2 Fix: Prepend to keep mapping in sync with draft rows
+            rowSystemMappingArray.unshift(currentPassWeftId);
+
+            for (let j = 0; j < numWarps; j++) {
+                let cellState = 0; // Rule 3.5.1: Initialize cellState = 0 (WHITE)
+                const targetCellWarpSys = warpData[j] ? warpData[j].warpSys : 0; // Default to 0 if somehow warpData[j] is undefined
+
+                // Rule 3.5.2: Direct Interaction Check
+                const interactionAtWarpJ = weftPass.interactions.find(I => I.warpIdx === j);
+                if (interactionAtWarpJ) {
+                    if (interactionAtWarpJ.isTopInteraction) { // Weft drawn OVER this warp
+                        cellState = 0; // WHITE
+                    } else { // Weft drawn UNDER this warp
+                        cellState = 1; // BLACK
+                    }
+                }
+
+                // Rule 3.5.3: Multi-Warp Lifting Rule
+                if (travelWarpSys !== 0 && targetCellWarpSys < travelWarpSys) {
+                    cellState = 1; // BLACK (override)
+                }
+
+                currentRow.push(cellState);
+            }
+            // For Issue 2 Fix: Prepend row to make it the top row
+            pattern.unshiftWeftSequence(currentRow.val());
+        });
+    }
+
+    // Handle case where no weftPasses were generated but allInteractions was not empty
+    // (e.g. only single point interactions not forming a pass by current rules)
+    // Or if warpData was empty/invalid for cell logic.
+    // This ensures a valid, if perhaps empty or minimal, draft is created.
+    if (pattern.wefts() === 0) {
+        console.log("CrossSectionView: No weft passes resulted in rows, creating a blank draft row.");
+        let row = new Sequence.OneD();
+        const currentNumWarpsFallback = numWarps > 0 ? numWarps : 1;
+        row.pushMultiple(0, currentNumWarpsFallback);
+        pattern.pushWeftSequence(row.val()); // Single row, push or unshift is fine.
+        // If rowSystemMappingArray is empty because no passes, add a default
+        if (rowSystemMappingArray.length === 0) {
+            rowSystemMappingArray.push(0); // Or unshift(0) if consistency is desired, though for one row it's same.
+        }
+    }
+
+    // Step 4: Finalize Draft Object
+    const finalPatternExport = pattern.export();
+    let d = initDraftFromDrawdown(finalPatternExport);
+
+    // 4.2: Populate System Mappings
+    if (numWarps > 0 && warpData && warpData.length === numWarps) {
+        d.colSystemMapping = warpData.map(wd => wd.warpSys);
+    } else {
+        // Fallback if warpData is not as expected
+        d.colSystemMapping = Array(numWarps > 0 ? numWarps : 1).fill(0);
+    }
+    // Ensure rowSystemMappingArray is not empty before assigning
+    d.rowSystemMapping = rowSystemMappingArray.length > 0 ? rowSystemMappingArray : [0];
+
+    // 4.3: Populate Shuttle Mappings (Default)
+    d.colShuttleMapping = Array(d.drawdown[0] ? d.drawdown[0].length : (numWarps > 0 ? numWarps : 1)).fill(0);
+    d.rowShuttleMapping = Array(d.drawdown.length > 0 ? d.drawdown.length : 1).fill(0);
+
+    // gen_name will be updated by generateName function, but set a temporary one if needed for debugging before that runs.
+    // d.gen_name = `cross section ${d.drawdown[0] ? d.drawdown[0].length : 0}x${d.drawdown.length}`; 
+
+    // 4.4: Return Promise.resolve([d])
     return Promise.resolve([d]);
 };
 
@@ -103,16 +372,16 @@ const createSketch = (param: any, updateCallback: Function) => {
             "#F4A7B9", "#A7C7E7", "#C6E2E9", "#FAD6A5", "#D5AAFF", "#B0E57C",
             "#FFD700", "#FFB347", "#87CEFA", "#E6E6FA", "#FFE4E1", "#C1F0F6"
         ];
-        const SKETCH_TOP_MARGIN = 140; // from dev.js topMargin
-        const SKETCH_LEFT_MARGIN = 60; // from dev.js leftMargin
+        const SKETCH_TOP_MARGIN = 140;
+        const SKETCH_LEFT_MARGIN = 60;
         const SKETCH_CANVAS_WIDTH = CANVAS_WIDTH; // AdaCAD op constant
         const SKETCH_CANVAS_HEIGHT = CANVAS_HEIGHT; // AdaCAD op constant
 
-        // ---- Local state mirrored from param and dev.js globals ----
+        // ---- Local state mirrored from param ----
         let localConfig = JSON.parse(JSON.stringify(param.value.config || { numWarps: 8, warpSystems: 2, weftSystems: 5 }));
         let { numWarps, warpSystems, weftSystems } = localConfig;
 
-        // Initialize canvasState ensuring all fields from dev.js are present
+        // Initialize canvasState ensuring all fields are present
         const initialCanvasState = {
             activeWeft: null,
             selectedDots: [],
@@ -120,6 +389,7 @@ const createSketch = (param: any, updateCallback: Function) => {
             permanentSplines: [],
             warpData: [],
             clickSequence: 0,
+            currentPathId: 0,
             ...param.value.canvasState // Spread potentially pre-existing state
         };
         // Ensure dotFills is initialized correctly if not present or not an array (e.g. from old state)
@@ -127,16 +397,16 @@ const createSketch = (param: any, updateCallback: Function) => {
 
 
         let localCanvasState = JSON.parse(JSON.stringify(initialCanvasState));
-        // Destructure for direct use in sketch logic, mirroring dev.js variables
-        let { activeWeft, selectedDots, dotFills, permanentSplines, warpData, clickSequence } = localCanvasState;
+        // Destructure for direct use in sketch logic
+        let { activeWeft, selectedDots, dotFills, permanentSplines, warpData, clickSequence, currentPathId } = localCanvasState;
 
-        let currentSpline = []; // Equivalent to currentSpline in dev.js, for active drawing
+        let currentSpline = [];
         let calculatedWarpDots = []; // Calculated positions, not part of saved state. {x, y, originalIndex, warpColumn}
 
         // ---- Helper to send state updates back to AdaCAD ----
         const callUpdate = () => {
             // Pack back destructured variables into localCanvasState before sending
-            localCanvasState = { activeWeft, selectedDots, dotFills, permanentSplines, warpData, clickSequence };
+            localCanvasState = { activeWeft, selectedDots, dotFills, permanentSplines, warpData, clickSequence, currentPathId };
             const newState = {
                 canvasState: JSON.parse(JSON.stringify(localCanvasState)), // Deep copy
                 config: JSON.parse(JSON.stringify(localConfig)),       // Deep copy
@@ -145,17 +415,17 @@ const createSketch = (param: any, updateCallback: Function) => {
             updateCallback(newState);
         };
 
-        // ---- Functions ported and adapted from dev.js ----
         const initializeWarpDataAndDots = () => {
             warpData = [];
             clickSequence = 0;
-            selectedDots = []; // Reset from dev.js's resetCanvas
-            dotFills = [];     // Reset from dev.js's resetCanvas
-            currentSpline = []; // Reset from dev.js's resetCanvas
-            permanentSplines = [];// Reset from dev.js's resetCanvas
-            activeWeft = null;   // Reset from dev.js's resetCanvas
+            selectedDots = [];
+            dotFills = [];
+            currentSpline = [];
+            permanentSplines = [];
+            activeWeft = null;
+            currentPathId = 0;
 
-            // Calculate warp dot positions (part of dev.js drawWarpLines)
+            // Calculate warp dot positions
             calculatedWarpDots = [];
             let spacingX = (SKETCH_CANVAS_WIDTH - SKETCH_LEFT_MARGIN) / (numWarps + 1);
             let spacingY = (SKETCH_CANVAS_HEIGHT - SKETCH_TOP_MARGIN) / (warpSystems + 1);
@@ -208,10 +478,10 @@ const createSketch = (param: any, updateCallback: Function) => {
             // console.log("Updated sequence numbers, new clickSequence:", clickSequence, "warpData:", JSON.parse(JSON.stringify(warpData)));
         };
 
-        const resetSketchFull = () => { // Corresponds to resetCanvas in dev.js
+        const resetSketchFull = () => {
             initializeWarpDataAndDots(); // This resets most state variables
             // activeWeft is reset inside initializeWarpDataAndDots
-            p.noLoop(); // As per dev.js resetCanvas calling redraw (which implies setup's noLoop if activeWeft is null)
+            p.noLoop();
             callUpdate();
             p.redraw();
         };
@@ -222,7 +492,7 @@ const createSketch = (param: any, updateCallback: Function) => {
             p.createCanvas(SKETCH_CANVAS_WIDTH, SKETCH_CANVAS_HEIGHT);
             p.textSize(14);
             initializeWarpDataAndDots(); // Initial setup of data structures and dot positions
-            if (activeWeft === null) { // Match dev.js behavior
+            if (activeWeft === null) {
                 p.noLoop();
             }
             p.redraw();
@@ -232,10 +502,10 @@ const createSketch = (param: any, updateCallback: Function) => {
             p.background(255);
             drawWarpLines();
             drawWeftDots();
-            drawWarpInteractionDots(); // Renamed from drawWarpDots in dev.js for clarity
+            drawWarpInteractionDots();
             drawPermanentSplines();
-            drawStickySpline(); // (drawTemporaryActiveSpline)
-            drawResetButton(); // Draw the reset button
+            drawStickySpline();
+            drawResetButton();
         };
 
         const drawWarpLines = () => {
@@ -273,7 +543,7 @@ const createSketch = (param: any, updateCallback: Function) => {
             }
         };
 
-        const drawWarpInteractionDots = () => { // Was drawWarpDots in dev.js
+        const drawWarpInteractionDots = () => {
             for (let i = 0; i < calculatedWarpDots.length; i++) {
                 let dot = calculatedWarpDots[i];
                 // dotFills is Array<Array<number>>, indexed by originalIndex
@@ -310,25 +580,23 @@ const createSketch = (param: any, updateCallback: Function) => {
                     let dot = calculatedWarpDots[spline.dots[i]]; // Use originalIndex to find dot in calculatedWarpDots
                     if (!dot) continue; // Safeguard
                     points.push({ x: dot.x, y: dot.y });
-                    // dev.js spline curve adjustment logic (removed for direct port, can be added back if necessary)
                 }
 
-                if (points.length < 2) { // If only one point, draw nothing or a single dot marker if desired. dev.js does not draw.
-                    if (points.length === 1 && spline.closed) { // dev.js draws line from point to itself if closed with 1 dot
+                if (points.length < 2) { // If only one point, draw nothing or a single dot marker if desired.
+                    if (points.length === 1 && spline.closed) {
                         // p.ellipse(points[0].x, points[0].y, 5,5); // example for single dot viz
                     }
                     continue;
                 }
 
-                if (points.length < 3 || spline.closed) { // dev.js: handles 2 points with line, or closed splines with lines
+                if (points.length < 3 || spline.closed) { // Handles 2 points with line, or closed splines with lines
                     for (let j = 0; j < points.length - 1; j++) {
                         p.line(points[j].x, points[j].y, points[j + 1].x, points[j + 1].y);
                     }
                     if (spline.closed && points.length > 0) { // Ensure closing line is drawn for closed splines.
-                        // dev.js connects last to first if closed and has points
                         p.line(points[points.length - 1].x, points[points.length - 1].y, points[0].x, points[0].y);
                     }
-                } else { // Open splines with 3+ points are drawn as curves in dev.js
+                } else { // Open splines with 3+ points are drawn as curves
                     p.beginShape();
                     p.curveVertex(points[0].x, points[0].y); // Repeat first for Catmull-Rom
                     for (let pt of points) {
@@ -371,7 +639,9 @@ const createSketch = (param: any, updateCallback: Function) => {
             // Check reset button first
             if (p.mouseX > resetButton.x && p.mouseX < resetButton.x + resetButton.w &&
                 p.mouseY > resetButton.y && p.mouseY < resetButton.y + resetButton.h) {
+                // Reset button clicked
                 resetSketchFull();
+
                 clickedOnUIElement = true; // Technically UI, but handled.
                 return; // Full reset, no further processing.
             }
@@ -384,10 +654,12 @@ const createSketch = (param: any, updateCallback: Function) => {
                     if (activeWeft === i) {
                         activeWeft = null;
                         currentSpline = [];
+                        currentPathId++; // Path ended
                         p.noLoop();
                     } else {
                         activeWeft = i;
                         currentSpline = [];
+                        currentPathId++; // New path started
                         p.loop();
                     }
                     clickedOnUIElement = true;
@@ -402,7 +674,7 @@ const createSketch = (param: any, updateCallback: Function) => {
                 for (let i = 0; i < calculatedWarpDots.length; i++) { // i is the originalIndex
                     let dot = calculatedWarpDots[i];
                     if (p.dist(p.mouseX, p.mouseY, dot.x, dot.y) < 10) { // Clicked on a warp dot (radius 6, hit area 10)
-                        const dotOriginalIndex = i; // In dev.js, i is the direct index into warpDots
+                        const dotOriginalIndex = i;
                         const { warpIdx, isTop } = getDotInfo(dotOriginalIndex);
 
                         if (!warpData[warpIdx]) {
@@ -442,22 +714,22 @@ const createSketch = (param: any, updateCallback: Function) => {
                                 if (!Array.isArray(dotFills[dotOriginalIndex])) dotFills[dotOriginalIndex] = [];
                                 dotFills[dotOriginalIndex].push(activeWeft); // First fill for this dot with activeWeft
 
-                                weftArray.push({ weft: activeWeft, sequence: clickSequence });
+                                weftArray.push({ weft: activeWeft, sequence: clickSequence, pathId: currentPathId });
                                 clickSequence++;
                             } else if (!(dotFills[dotOriginalIndex] || []).includes(activeWeft)) {
                                 // Ensure dotFills[dotOriginalIndex] is an array
                                 if (!Array.isArray(dotFills[dotOriginalIndex])) dotFills[dotOriginalIndex] = [];
                                 dotFills[dotOriginalIndex].push(activeWeft); // Subsequent fill, different weft
 
-                                weftArray.push({ weft: activeWeft, sequence: clickSequence });
+                                weftArray.push({ weft: activeWeft, sequence: clickSequence, pathId: currentPathId });
                                 clickSequence++;
                             } else if ((dotFills[dotOriginalIndex] || []).includes(activeWeft) && currentSpline.length === 0) {
-                                // Case from dev.js: dot is already assigned this weft, start a new spline drawing from here
+                                // dot is already assigned this weft, start a new spline drawing from here
                                 currentSpline = [dotOriginalIndex];
                                 p.loop(); // ensure draw updates for sticky line
                             }
 
-                            // Spline segment creation logic from dev.js
+                            // Spline segment creation logic
                             if (currentSpline.length > 0 && currentSpline[currentSpline.length - 1] !== dotOriginalIndex) { // if currentSpline has a start and we clicked a new dot
                                 let prev = currentSpline[currentSpline.length - 1];
                                 // Find if there's an existing open spline for this weft
@@ -469,7 +741,7 @@ const createSketch = (param: any, updateCallback: Function) => {
                                 }
                             }
 
-                            // Spline closing logic from dev.js
+                            // Spline closing logic
                             if (currentSpline.length > 0 && currentSpline[0] === dotOriginalIndex && currentSpline.length > 1) { // Clicked on the first dot of the current spline (and it has at least one segment)
                                 let splineToClose = permanentSplines.find(s => s.weft === activeWeft && !s.closed && s.dots[0] === currentSpline[0]);
                                 if (splineToClose) {
@@ -494,6 +766,7 @@ const createSketch = (param: any, updateCallback: Function) => {
                                 }
                                 currentSpline = [];
                                 activeWeft = null;
+                                currentPathId++; // Path ended due to spline closure
                                 p.noLoop();
                             } else if (!((dotFills[dotOriginalIndex] || []).includes(activeWeft) && currentSpline.length === 0 && currentSpline[0] === dotOriginalIndex)) { // if not starting on existing and closing immediately
                                 // If not closing, and not the special case of starting on an existing dot (which already sets currentSpline)
@@ -518,63 +791,11 @@ const createSketch = (param: any, updateCallback: Function) => {
             if (!clickedOnUIElement && activeWeft !== null) {
                 currentSpline = []; // Clear current drawing spline
                 activeWeft = null;  // Deselect weft
+                currentPathId++; // Path ended
                 p.noLoop();
                 callUpdate();
                 p.redraw();
             }
-        };
-
-        // ---- AdaCAD Specific: Handle updates from outside the sketch ----
-        p.updateWithNewProps = (newParam) => {
-            const newConfig = newParam.value.config;
-            const newCanvasState = newParam.value.canvasState;
-            let configChanged = false;
-
-            if (localConfig.numWarps !== newConfig.numWarps ||
-                localConfig.warpSystems !== newConfig.warpSystems ||
-                localConfig.weftSystems !== newConfig.weftSystems) {
-
-                console.log("Config changed. Old:", localConfig, "New:", newConfig);
-                localConfig = JSON.parse(JSON.stringify(newConfig));
-                ({ numWarps, warpSystems, weftSystems } = localConfig);
-                configChanged = true;
-                // Full re-initialization if config changes, similar to dev.js updateValues -> resetCanvas
-                initializeWarpDataAndDots();
-            }
-
-            // Update local canvas state if it has changed externally (e.g. undo/redo, load)
-            // This should overwrite the sketch's current state with the new one.
-            // Ensure all fields are copied.
-            const updatedStateFromParams = {
-                activeWeft: null, selectedDots: [], dotFills: [], permanentSplines: [], warpData: [], clickSequence: 0,
-                ...newCanvasState
-            };
-            if (!Array.isArray(updatedStateFromParams.dotFills)) updatedStateFromParams.dotFills = [];
-
-
-            // Only update if not a config change (which already resets state)
-            // Or if specifically the state is different (e.g. undo/redo)
-            if (!configChanged && JSON.stringify(localCanvasState) !== JSON.stringify(updatedStateFromParams)) {
-                console.log("Canvas state updated externally.");
-                localCanvasState = JSON.parse(JSON.stringify(updatedStateFromParams));
-                ({ activeWeft, selectedDots, dotFills, permanentSplines, warpData, clickSequence } = localCanvasState);
-                // If dotFills or warpData structure is critical and might be malformed from an old state, validate/re-initialize here.
-                // For now, assume newCanvasState is valid.
-                if (!Array.isArray(dotFills)) dotFills = []; // re-ensure
-                while (dotFills.length < numWarps * 2) dotFills.push([]); // ensure dotFills has enough empty arrays
-
-
-                // Recalculate visual dots as numWarps might be part of canvasState in some scenarios (though config is source of truth)
-                // But primarily, ensure calculatedWarpDots is up-to-date if anything that affects it changed.
-                // Config change already handles this via initializeWarpDataAndDots.
-            }
-
-            // Ensure drawing loop is active if a weft is selected
-            if (activeWeft !== null) p.loop(); else p.noLoop();
-
-            console.log("updateWithNewProps done. activeWeft:", activeWeft, "currentSpline:", currentSpline);
-            callUpdate(); // Reflect any state absorption.
-            p.redraw();
         };
     };
 };
