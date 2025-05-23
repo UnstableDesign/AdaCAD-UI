@@ -188,8 +188,34 @@ export class OperationService {
   getOp(name: string): Operation | DynamicOperation{
     const op_ndx: number = this.ops.findIndex(el => el.name === name);
     const parent_ndx: number = this.dynamic_ops.findIndex(el => el.name === name);
-    if(op_ndx !== -1) return this.ops[op_ndx];
-    if(parent_ndx !== -1) return this.dynamic_ops[parent_ndx];
+
+    let opDefinition: Operation | DynamicOperation = null;
+
+    if (op_ndx !== -1) {
+      opDefinition = this.ops[op_ndx];
+    } else if (parent_ndx !== -1) {
+      opDefinition = this.dynamic_ops[parent_ndx];
+    }
+
+    if (opDefinition) {
+      const newOp = { ...opDefinition };
+      newOp.params = opDefinition.params.map(param => {
+        const newParam = { ...param };
+        // If the param is a p5-canvas, we need a deep copy of the value and not just a reference
+        if (param.type === 'p5-canvas') {
+          try {
+            newParam.value = JSON.parse(JSON.stringify(param.value));
+          } catch (e) {
+            console.error(`OperationService.getOp: Could not deep copy param value for ${opDefinition.name}, param ${param.name} of type p5-canvas`, param.value, e);
+            newParam.value = param.value;
+          }
+        } else {
+          newParam.value = param.value;
+        }
+        return newParam;
+      });
+      return newOp;
+    }
     return null;
   }
 
