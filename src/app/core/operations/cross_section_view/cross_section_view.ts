@@ -373,6 +373,11 @@ const createSketch = (param: any, updateCallback: Function) => {
         const SKETCH_CANVAS_WIDTH = CANVAS_WIDTH; // AdaCAD op constant
         const SKETCH_CANVAS_HEIGHT = CANVAS_HEIGHT; // AdaCAD op constant
 
+        // Hover function variables
+        let hoveredDotIndex = -1;
+        let showDeleteButton = false;
+        let deleteButtonBounds = null;
+
         // ---- Local state mirrored from param ----
         let localConfig = JSON.parse(JSON.stringify(param.value.config || { numWarps: 8, warpSystems: 2, weftSystems: 5 }));
         let { numWarps, warpSystems, weftSystems } = localConfig;
@@ -420,6 +425,9 @@ const createSketch = (param: any, updateCallback: Function) => {
             permanentSplines = [];
             activeWeft = null;
             currentPathId = 0;
+            hoveredDotIndex = -1;
+            showDeleteButton = false;
+            deleteButtonBounds = null;
 
             // Calculate warp dot positions
             calculatedWarpDots = [];
@@ -500,6 +508,7 @@ const createSketch = (param: any, updateCallback: Function) => {
             drawPermanentSplines();
             drawStickySpline();
             drawResetButton();
+            drawDeleteButton();
         };
 
         const drawWarpLines = () => {
@@ -561,6 +570,33 @@ const createSketch = (param: any, updateCallback: Function) => {
                 }
             }
         };
+
+        const drawDeleteButton = () => {
+            if (showDeleteButton && hoveredDotIndex >= 0 && deleteButtonBounds) {
+                // Draw delete button background
+                p.fill(255, 100, 100);
+                p.stroke(200, 50, 50);
+                p.strokeWeight(1);
+                p.rect(deleteButtonBounds.x, deleteButtonBounds.y, deleteButtonBounds.w, deleteButtonBounds.h, 2);
+
+                // Draw X
+                p.stroke(255);
+                p.strokeWeight(2);
+                let padding = 3;
+                p.line(
+                    deleteButtonBounds.x + padding,
+                    deleteButtonBounds.y + padding,
+                    deleteButtonBounds.x + deleteButtonBounds.w - padding,
+                    deleteButtonBounds.y + deleteButtonBounds.h - padding
+                );
+                p.line(
+                    deleteButtonBounds.x + deleteButtonBounds.w - padding,
+                    deleteButtonBounds.y + padding,
+                    deleteButtonBounds.x + padding,
+                    deleteButtonBounds.y + deleteButtonBounds.h - padding
+                );
+            }
+        }
 
         const drawPermanentSplines = () => {
             for (let spline of permanentSplines) {
@@ -627,6 +663,63 @@ const createSketch = (param: any, updateCallback: Function) => {
             p.text(resetButton.label, resetButton.x + resetButton.w / 2, resetButton.y + resetButton.h / 2);
         };
 
+        p.mouseMoved = () => {
+            let previousHoveredDot = hoveredDotIndex;
+            let previousShowDelete = showDeleteButton;
+
+            // First check if we're hovering over the delete button itself
+            if (deleteButtonBounds &&
+                p.mouseX >= deleteButtonBounds.x - 2 && p.mouseX <= deleteButtonBounds.x + deleteButtonBounds.w + 2 &&
+                p.mouseY >= deleteButtonBounds.y - 2 && p.mouseY <= deleteButtonBounds.y + deleteButtonBounds.h + 2) {
+                // Keep the delete button visible when hovering over it
+                p.cursor(p.HAND);
+                return;
+            }
+
+            hoveredDotIndex = -1;
+            showDeleteButton = false;
+            deleteButtonBounds = null;
+
+            // Check if hovering over any dot
+            for (let i = 0; i < calculatedWarpDots.length; i++) {
+                let dot = calculatedWarpDots[i];
+                if (p.dist(p.mouseX, p.mouseY, dot.x, dot.y) < 10) {
+                    hoveredDotIndex = i;
+
+                    // Only show delete button if:
+                    // 1. No active weft is selected (not actively drawing)
+                    // 2. The dot has at least one weft assigned
+                    if (activeWeft === null && dotFills[i].length > 0) {
+                        showDeleteButton = true;
+                        // Position delete button to the top-right of the dot
+                        deleteButtonBounds = {
+                            x: dot.x + 8,
+                            y: dot.y - 18,
+                            w: 16,
+                            h: 16
+                        };
+                    }
+                    break;
+                }
+            }
+
+            // Redraw if hover state changed
+            if (previousHoveredDot !== hoveredDotIndex || previousShowDelete !== showDeleteButton) {
+                p.redraw();
+            }
+
+            // Update cursor
+            if (showDeleteButton && deleteButtonBounds &&
+                p.mouseX >= deleteButtonBounds.x && p.mouseX <= deleteButtonBounds.x + deleteButtonBounds.w &&
+                p.mouseY >= deleteButtonBounds.y && p.mouseY <= deleteButtonBounds.y + deleteButtonBounds.h) {
+                p.cursor(p.HAND);
+            } else if (hoveredDotIndex >= 0) {
+                p.cursor(p.HAND);
+            } else {
+                p.cursor(p.ARROW);
+            }
+        }
+
         p.mousePressed = () => {
             let clickedOnUIElement = false; // Flag to prevent deselection if UI is hit
 
@@ -663,6 +756,68 @@ const createSketch = (param: any, updateCallback: Function) => {
                 }
             }
 
+            // Check delete button click
+            if (showDeleteButton && deleteButtonBounds && activeWeft === null) {
+                if (p.mouseX >= deleteButtonBounds.x && p.mouseX <= deleteButtonBounds.x + deleteButtonBounds.w &&
+                    p.mouseY >= deleteButtonBounds.y && p.mouseY <= deleteButtonBounds.y + deleteButtonBounds.h) {
+                    // Delete the most recent weft from the hovered dot
+                    let i = hoveredDotIndex;
+                    const { warpIdx, isTop } = getDotInfo(i);
+                    const weftArray = isTop ? warpData[warpIdx].topWeft : warpData[warpIdx].bottomWeft;
+
+                    // Find the most recent weft assignment (highest sequence number)
+                    let mostRecentWeft = -1;
+                    let mostRecentIndex = -1;
+                    let highestSequence = -1;
+
+                    for (let j = 0; j < weftArray.length; j++) {
+                        if (weftArray[j].sequence > highestSequence) {
+                            highestSequence = weftArray[j].sequence;
+                            mostRecentIndex = j;
+                            mostRecentWeft = weftArray[j].weft;
+                        }
+                    }
+
+                    if (mostRecentIndex !== -1) {
+                        // Remove from dotFills
+                        const weftToRemove = mostRecentWeft;
+                        const weftIndex = dotFills[i].indexOf(weftToRemove);
+                        if (weftIndex !== -1) {
+                            dotFills[i].splice(weftIndex, 1);
+                        }
+
+                        if (dotFills[i].length === 0) {
+                            dotFills[i] = [];
+                            selectedDots = selectedDots.filter(idx => idx !== i);
+                        }
+
+                        // Remove from warpData
+                        const removedSequence = weftArray[mostRecentIndex].sequence;
+                        weftArray.splice(mostRecentIndex, 1);
+                        updateSequenceNumbers(removedSequence);
+
+                        // Update splines
+                        permanentSplines = permanentSplines.map(spline => {
+                            if (spline.weft === weftToRemove) {
+                                return { ...spline, dots: spline.dots.filter(idx => idx !== i) };
+                            }
+                            return spline;
+                        }).filter(spline => spline.dots.length >= 2);
+
+                        console.log(`Deleted weft ${weftToRemove} from dot ${i}, updated warpData:`, JSON.parse(JSON.stringify(warpData)));
+                    }
+
+                    // Reset hover state
+                    showDeleteButton = false;
+                    hoveredDotIndex = -1;
+                    deleteButtonBounds = null;
+
+                    callUpdate();
+                    p.redraw();
+                    return;
+                }
+            }
+
             // Warp dot clicks
             if (activeWeft !== null) {
                 for (let i = 0; i < calculatedWarpDots.length; i++) { // i is the originalIndex
@@ -678,26 +833,12 @@ const createSketch = (param: any, updateCallback: Function) => {
 
                         // REMOVING a weft assignment
                         if (selectedDots.includes(dotOriginalIndex) && (dotFills[dotOriginalIndex] || []).includes(activeWeft)) {
-                            dotFills[dotOriginalIndex] = (dotFills[dotOriginalIndex] || []).filter(w => w !== activeWeft);
-                            if ((dotFills[dotOriginalIndex] || []).length === 0) {
-                                selectedDots = selectedDots.filter(idx => idx !== dotOriginalIndex);
-                            }
-
-                            const weftAssignmentIndex = weftArray.findIndex(item => item.weft === activeWeft);
-                            if (weftAssignmentIndex !== -1) {
-                                const removedSequence = weftArray[weftAssignmentIndex].sequence;
-                                weftArray.splice(weftAssignmentIndex, 1);
-                                updateSequenceNumbers(removedSequence);
-                            }
-
-                            permanentSplines = permanentSplines.map(spline => {
-                                if (spline.weft === activeWeft) {
-                                    return { ...spline, dots: spline.dots.filter(idx => idx !== dotOriginalIndex) };
-                                }
-                                return spline;
-                            }).filter(spline => spline.dots.length >= (spline.closed ? 1 : 2)); // keep splines with enough points
-
-                            currentSpline = currentSpline.filter(idx => idx !== dotOriginalIndex);
+                            // Resume drawing from this dot
+                            currentSpline = [i];
+                            p.loop();
+                            console.log(`Resuming drawing from dot ${i} with weft ${activeWeft}`);
+                            p.redraw();
+                            return;
                         }
                         // ADDING a weft assignment or starting/continuing/closing a spline
                         else {
