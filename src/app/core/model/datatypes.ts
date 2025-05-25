@@ -546,7 +546,7 @@ export type CodeParam = OperationParam & {
 */
 export type CanvasParam = OperationParam & {
   value: {
-    [key: string]: any;
+    [key: string]: any; // each key holds a canvasState variable
   }
 }
 

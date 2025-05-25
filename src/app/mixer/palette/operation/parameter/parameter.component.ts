@@ -146,16 +146,26 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
   ngAfterViewInit() {
     // Initialize canvas if needed
     if (this.param.type === 'p5-canvas' && this.p5canvasContainer) {
+      // Fetch initial param value from the opnode
+      const op = this.ops.getOp(this.opnode.name);
+
+      if(op === null || op === undefined) return Promise.reject("Operation is null")
+    
+      const initialParamVals = op.params.map((param, ndx) => {
+        return {
+          param: param,
+          val: this.opnode.params[ndx]
+        }
+      })
+
       // Wait for next tick to ensure ViewChild is available
       // Fetch the initial state for the first load - This determines the initial config
-      const initialParamValue = (<CanvasParam>this.param)?.value;
-      if (!initialParamValue || !initialParamValue.config) {
-        console.error(`[ParameterComponent ${this.opid}] Could not get initial param config in ngAfterViewInit.`);
+      if (!initialParamVals) {
+        console.error(`[ParameterComponent ${this.opid}] Could not get initial param value in ngAfterViewInit.`);
         return;
       }
-      const initialConfig = initialParamValue.config;
 
-      setTimeout(() => this.initializeP5Canvas(initialConfig), 0);
+      setTimeout(() => this.initializeP5Canvas(initialParamVals), 0);
     }
   }
 
@@ -196,7 +206,7 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
    * with the provided configuration.
    * @param latestConfig The latest configuration object for the sketch.
    */
-  private _resetSketch (latestConfig: object): void {
+  private _resetSketch (latestParamVals: object): void {
     if (this.p5Instance) {
       try {
         this.p5Instance.remove();
@@ -205,9 +215,7 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
       }
       this.p5Instance = null;
     }
-    setTimeout(() => {
-      this.initializeP5Canvas(latestConfig);
-    }, 0);
+    setTimeout(() => this.initializeP5Canvas(latestParamVals), 0);
   }
 
   /**
@@ -276,7 +284,7 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  initializeP5Canvas (currentConfig: object) {
+  initializeP5Canvas (currentParamVals: object) {
     // Setup an interactive p5.js canvas for operations that use it
 
     if (!this.p5canvasContainer || !this.p5canvasContainer.nativeElement) {
@@ -286,15 +294,6 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
 
     if (this.param.type !== 'p5-canvas') {
       console.error(`[ParameterComponent ${this.opid}] This component's own param Input is not type 'p5-canvas'. Type: ${this.param.type}`);
-      return;
-    }
-
-    // --- Get the last known canvasState and view from this.param
-    const lastCanvasState = (<CanvasParam>this.param)?.value?.canvasState;
-    const lastView = (<CanvasParam>this.param)?.value?.view;
-
-    if (lastCanvasState === undefined || lastView === undefined) {
-      console.error(`[ParameterComponent ${this.opid}] Could not retrieve last canvasState or view from internal param value.`);
       return;
     }
 
@@ -308,21 +307,11 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
     // If operation provides a sketch function, create the P5 instance
     if (operationDefinition && 'createSketch' in operationDefinition && typeof operationDefinition.createSketch === 'function') {
 
-      // Construct paramForSketch using last state + current config
-      const paramForSketch: CanvasParam = {
-        ...(this.param as CanvasParam),   // Use the structure/metadata from our Input param
-        value: {                          // Reconstruct the value object
-          canvasState: lastCanvasState,
-          config: currentConfig,
-          view: lastView
-        }
-      };
-
-      const updateCallbackFn = (newState: any) => {
+      const updateCallbackFn = (newCanvasState: any) => {
         // Update the local component param value (important for subsequent saves/internal updates)
-        this.param.value = newState;
+        this.param.value = newCanvasState;
         // Emit the change event
-        this.onParamChange(newState);
+        this.onParamChange(newCanvasState);
       };
 
       // Debounce or ensure cleanup happens correctly if resets are rapid
@@ -335,7 +324,7 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
         this.p5Instance = null;
       }
       
-      const userSketchProvider = operationDefinition.createSketch(paramForSketch, updateCallbackFn);
+      const userSketchProvider = operationDefinition.createSketch(currentParamVals, updateCallbackFn);
 
       // Define the wrapper for p5 instantiation, including the mouse proxy
       const sketchWrapper = (actualP5Instance: p5) => {

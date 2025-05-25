@@ -619,38 +619,26 @@ export class OperationComponent implements OnInit {
    * passing the latest configuration derived from non-canvas parameters.
    */
   public triggerCanvasResetIfNeeded (changedParamType: string): void {
+    // Trigger reset if op has a p5-canvas param AND the changed parameter is not the p5-canvas param
+    // (canvasParamIndex is -1 if the op does not have a p5-canvas param, otherwise is the index of the canvas param)
     const canvasParamIndex = this.op.params.findIndex(p => p.type === 'p5-canvas');
 
     if (canvasParamIndex !== -1 && changedParamType !== 'p5-canvas') {
 
-      const currentNodeState = this.tree.getOpNode(this.id);
-      if (!currentNodeState || !currentNodeState.params) {
-        // Could not fetch current OpNode state or params from TreeService for canvas reset
-        return;
-      }
-
-      const latestConfig = {};
-      this.op.params.forEach((paramDef, index) => {
-        if (paramDef.type !== 'p5-canvas') {
-          const paramDisplayName = paramDef.name;
-          let configKey = '';
-          switch (paramDisplayName) {
-            case 'Number of Warps': configKey = 'numWarps'; break;
-            case 'Warp Systems': configKey = 'warpSystems'; break;
-            case 'Weft Systems': configKey = 'weftSystems'; break;
-            default:
-              // Fallback for unmapped params, or could be stricter
-              configKey = paramDisplayName.toLowerCase().replace(/\s+/g, '');
-              console.warn(`[OperationComponent ${this.id}] Unmapped param display name '${paramDisplayName}' for config. Using fallback key '${configKey}'.`);
-          }
-          latestConfig[configKey] = currentNodeState.params[index] ?? paramDef.value; // Use current value or default
+      if(this.op === null || this.op === undefined) { console.error("Operation is null"); return; }
+  
+      const currentParamVals = this.op.params.map((param, ndx) => {
+        return {
+          param: param,
+          val: this.opnode.params[ndx]
         }
-      });
+      })
 
+      // Trigger reset on the p5-canvas parameter component with the current param vals
       const paramComp = this.paramsComps?.find(comp => comp.param.type === 'p5-canvas');
 
-      if (paramComp) {
-        paramComp.triggerSketchReset(latestConfig);
+      if (currentParamVals) {
+        paramComp.triggerSketchReset(currentParamVals);
       } else {
         // Could not find p5-canvas ParameterComponent to trigger reset
       }
