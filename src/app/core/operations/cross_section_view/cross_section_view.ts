@@ -4,7 +4,7 @@ import { Sequence } from "../../model/sequence";
 import { initDraftFromDrawdown } from "../../model/drafts";
 // p5 import is in the parameter component
 
-const CANVAS_WIDTH = 600;
+const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 400;
 
 const name = "cross_section_view";
@@ -383,6 +383,7 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
         ];
         const SKETCH_TOP_MARGIN = 60;
         const SKETCH_LEFT_MARGIN = 60;
+        const SKETCH_BOTTOM_MARGIN = 20;
         const SKETCH_CANVAS_WIDTH = CANVAS_WIDTH;
         const SKETCH_CANVAS_HEIGHT = CANVAS_HEIGHT;
 
@@ -435,7 +436,7 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
             resetCanvas();
 
             // Create UI elements
-            resetButton = p.createButton("Reset").position(10, 200).mousePressed(resetCanvas); // note: was 100
+            resetButton = p.createButton("Reset").position(30, 180).mousePressed(resetCanvas).style('font-size', '16px');
 
             // Start the sketch in noLoop mode
             p.noLoop();
@@ -453,14 +454,14 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
 
         function drawWarpLines() {
             let spacingX = (SKETCH_CANVAS_WIDTH - SKETCH_LEFT_MARGIN) / (numWarps + 1);
-            let spacingY = (SKETCH_CANVAS_HEIGHT - SKETCH_TOP_MARGIN) / (warpSystems + 1);
+            let spacingY = (SKETCH_CANVAS_HEIGHT - SKETCH_TOP_MARGIN - SKETCH_BOTTOM_MARGIN) / (warpSystems + 1);
             canvasState.warpDots = [];
 
             for (let i = 0; i < numWarps; i++) {
                 let x = SKETCH_LEFT_MARGIN + spacingX * (i + 1);
                 p.stroke(0);
                 p.strokeWeight(1);
-                p.line(x, SKETCH_TOP_MARGIN, x, SKETCH_CANVAS_HEIGHT);
+                p.line(x, SKETCH_TOP_MARGIN, x, SKETCH_CANVAS_HEIGHT - SKETCH_BOTTOM_MARGIN);
 
                 let warpRow = i % warpSystems;
                 let y = SKETCH_TOP_MARGIN + spacingY * (warpRow + 1);
@@ -478,7 +479,7 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
         }
 
         function drawWeftDots() {
-            let spacing = (SKETCH_CANVAS_HEIGHT - SKETCH_TOP_MARGIN) / (weftSystems + 1);
+            let spacing = (SKETCH_CANVAS_HEIGHT - SKETCH_TOP_MARGIN - SKETCH_BOTTOM_MARGIN) / (weftSystems + 1);
             p.textAlign(p.CENTER, p.CENTER);
             p.textSize(16);
             for (let i = 0; i < weftSystems; i++) {
@@ -658,7 +659,7 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
 
         p.mousePressed = function mousePressed() {
             let clicked = false;
-            let spacing = (SKETCH_CANVAS_HEIGHT - SKETCH_TOP_MARGIN) / (weftSystems + 1);
+            let spacing = (SKETCH_CANVAS_HEIGHT - SKETCH_TOP_MARGIN - SKETCH_BOTTOM_MARGIN) / (weftSystems + 1);
 
             // Check weft system clicks
             for (let i = 0; i < weftSystems; i++) {
