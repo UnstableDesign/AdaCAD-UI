@@ -200,7 +200,6 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
             permanentSplines: [],
             warpData: [],
             clickSequence: 0,
-            currentPathId: 0,
             hoveredDotIndex: -1,
             showDeleteButton: false,
             deleteButtonBounds: null,
@@ -482,19 +481,27 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
             for (let i = 0; i < weftSystems; i++) {
                 let y = SKETCH_TOP_MARGIN + spacing * (i + 1);
                 if (p.dist(p.mouseX, p.mouseY, SKETCH_LEFT_MARGIN / 2, y) < 12) {
-                    if (canvasState.activeWeft === i) {
+                    const clickedWeftId = i;
+                    if (canvasState.activeWeft === clickedWeftId) {
                         // User clicked the same active weft button (to deselect)
                         canvasState.currentSpline = [];
                         canvasState.activeWeft = null;
                         p.noLoop();
-                        // Current path (if any) is now considered finished.
-                        // currentPathId does not change here. The next new path will increment it.
                     } else {
-                        // User clicked a new weft button (or a different one than currently active)
-                        // A new path is started or switching to a new path segment.
-                        canvasState.currentPathId++;
-                        canvasState.activeWeft = i;
-                        canvasState.currentSpline = [];
+                        // User clicked a new weft button or re-selected a previously deselected one.
+                        canvasState.activeWeft = clickedWeftId;
+                        canvasState.currentSpline = []; // Start with an empty spline for the sticky line
+
+                        // Try to find an unclosed path for this weft in permanentSplines to resume from
+                        let resumedFromSpline = false;
+                        for (let spline of canvasState.permanentSplines) {
+                            if (spline.weft === canvasState.activeWeft && !spline.closed && spline.dots.length > 0) {
+                                canvasState.currentSpline = [spline.dots[spline.dots.length - 1]];
+                                resumedFromSpline = true;
+                                break;
+                            }
+                        }
+                        // If no unclosed path was found, currentSpline remains empty, signifying a new path segment will start on the next dot click.
                         p.loop();
                     }
                     clicked = true;
@@ -582,75 +589,109 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
                         const weftArray = isTop ? canvasState.warpData[warpIdx].topWeft : canvasState.warpData[warpIdx].bottomWeft;
 
                         // Check if this dot has the active weft assigned
-                        if (canvasState.selectedDots.includes(i) && canvasState.dotFills[i].includes(canvasState.activeWeft)) {
-                            // Resume drawing from this dot
-                            canvasState.currentSpline = [i];
-                            p.loop();
-                            // console.log(`Resuming drawing from dot ${i} with weft ${canvasState.activeWeft}`);
-                            p.redraw();
-                            // Recalculate draft
-                            generateDraft(canvasState, numWarps, warpSystems);
-                            // Report the new canvasState to the operation
-                            updateCallback(canvasState);
-                            return;
-                        }
+                        // This condition was for resuming by clicking a dot.
+                        // With the new model, resuming is handled by weft icon selection.
+                        // Clicking a dot while a weft is active is always about *extending* the current path.
+                        // if (canvasState.selectedDots.includes(i) && canvasState.dotFills[i].includes(canvasState.activeWeft)) { ... }
 
-                        // Add new weft assignment
+                        // Add new weft assignment to warpData
                         if (!canvasState.selectedDots.includes(i)) {
                             canvasState.selectedDots.push(i);
                             canvasState.dotFills[i] = [canvasState.activeWeft];
-
                             weftArray.push({
-                                weft: canvasState.activeWeft,
-                                sequence: canvasState.clickSequence,
-                                pathId: canvasState.currentPathId
+                                weft: canvasState.activeWeft, // Path identity is the weftId
+                                sequence: canvasState.clickSequence
+                                // pathId: canvasState.currentPathId, // Removed
                             });
                             canvasState.clickSequence++;
-
                         } else if (!canvasState.dotFills[i].includes(canvasState.activeWeft)) {
                             canvasState.dotFills[i].push(canvasState.activeWeft);
-
                             weftArray.push({
-                                weft: canvasState.activeWeft,
-                                sequence: canvasState.clickSequence,
-                                pathId: canvasState.currentPathId
+                                weft: canvasState.activeWeft, // Path identity is the weftId
+                                sequence: canvasState.clickSequence
+                                // pathId: canvasState.currentPathId, // Removed
                             });
                             canvasState.clickSequence++;
-
                         } else if (canvasState.dotFills[i].includes(canvasState.activeWeft) && canvasState.currentSpline.length === 0) {
-                            // Dot already selected with this weft, and currentSpline is empty:
-                            // User is clicking an existing point of the current path to start drawing (or resume) from.
+                            // This case implies clicking on a dot that's already part of the active weft's path,
+                            // AND currentSpline is empty. This shouldn't happen if weft icon click correctly sets up currentSpline for resumption.
+                            // If it does, treat as starting a new segment from this dot.
                             canvasState.currentSpline = [i];
                             p.loop();
                             p.redraw();
-                            // Recalculate draft
-                            generateDraft(canvasState, numWarps, warpSystems);
-                            // Report the new canvasState to the operation
                             updateCallback(canvasState);
                             return;
                         }
 
+
+                        // Manage permanentSplines
                         if (canvasState.currentSpline.length > 0) {
-                            let prev = canvasState.currentSpline[canvasState.currentSpline.length - 1];
-                            if (
-                                canvasState.permanentSplines.length === 0 ||
-                                canvasState.permanentSplines[canvasState.permanentSplines.length - 1].weft !== canvasState.activeWeft ||
-                                canvasState.permanentSplines[canvasState.permanentSplines.length - 1].closed
-                            ) {
-                                canvasState.permanentSplines.push({ weft: canvasState.activeWeft, dots: [prev, i], closed: false });
-                            } else {
-                                canvasState.permanentSplines[canvasState.permanentSplines.length - 1].dots.push(i);
+                            // Extending an existing segment (could be from resumption or continuous drawing)
+                            let prevDot = canvasState.currentSpline[canvasState.currentSpline.length - 1];
+                            if (prevDot !== i) { // Only add if it's a new dot
+                                let extendedExisting = false;
+                                for (let spline of canvasState.permanentSplines) {
+                                    if (spline.weft === canvasState.activeWeft && !spline.closed && spline.dots.length > 0 && spline.dots[spline.dots.length - 1] === prevDot) {
+                                        spline.dots.push(i);
+                                        extendedExisting = true;
+                                        break;
+                                    }
+                                }
+                                if (!extendedExisting) {
+                                    // This implies currentSpline had a 'prevDot' but it wasn't the end of an existing permanentSpline.
+                                    // This could happen if currentSpline was [resumeDot] and this is the first extension click.
+                                    // Or, if somehow a segment started without being added to permanentSplines yet.
+                                    // Create a new spline starting with prevDot and current dot i
+                                    canvasState.permanentSplines.push({ weft: canvasState.activeWeft, dots: [prevDot, i], closed: false });
+                                }
                             }
+                        } else {
+                            // Starting a brand new spline segment for this weft (currentSpline was empty)
+                            canvasState.permanentSplines.push({ weft: canvasState.activeWeft, dots: [i], closed: false });
                         }
 
-                        if (canvasState.currentSpline.length > 0 && canvasState.currentSpline[0] === i) {
-                            canvasState.permanentSplines[canvasState.permanentSplines.length - 1].dots.push(i);
-                            canvasState.permanentSplines[canvasState.permanentSplines.length - 1].closed = true;
+
+                        // Path Closure Logic
+                        if (canvasState.currentSpline.length > 0 && canvasState.currentSpline[0] === i && canvasState.currentSpline.length > 1) {
+                            let splineToClose = null;
+                            for (let spline of canvasState.permanentSplines) {
+                                if (spline.weft === canvasState.activeWeft && !spline.closed && spline.dots[0] === i && spline.dots[spline.dots.length - 1] === canvasState.currentSpline[canvasState.currentSpline.length - 1]) {
+                                    // Check if the currentSpline's actual first point matches the clicked dot 'i'
+                                    // AND the last point of the spline in permanentSplines matches the last point of currentSpline before adding 'i'
+                                    // More direct: find the spline whose first point is 'i' and last point is the one before 'i' in currentSpline
+                                    if (spline.dots[spline.dots.length - 1] === i) { // Already added by previous block if it's a new point.
+                                        // This means the spline ends with 'i', and its first point is also 'i'.
+                                    } else {
+                                        spline.dots.push(i); // Add the closing dot to the visual spline
+                                    }
+                                    splineToClose = spline;
+                                    break;
+                                } else if (spline.weft === canvasState.activeWeft && !spline.closed && spline.dots.length > 0 && spline.dots[0] === i) {
+                                    // Simpler: if we are closing to the first point of *any* segment of this weft.
+                                    // This implies the current drawing sequence in currentSpline should lead to this 'i'.
+                                    // The last point of currentSpline (before adding 'i') should be the last point of the spline being closed.
+                                    const lastPointInCurrentSplineBeforeClosing = canvasState.currentSpline[canvasState.currentSpline.length - 1];
+                                    if (spline.dots[spline.dots.length - 1] === lastPointInCurrentSplineBeforeClosing) {
+                                        spline.dots.push(i);
+                                        splineToClose = spline;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (splineToClose) {
+                                splineToClose.closed = true;
+                            }
+                            // Else, if no specific spline was identified to close, this click might be on the first dot but not forming a closure.
+
                             canvasState.currentSpline = [];
                             canvasState.activeWeft = null;
                             p.noLoop();
                         } else {
-                            canvasState.currentSpline.push(i);
+                            // Add to currentSpline for the sticky line
+                            if (canvasState.currentSpline.length === 0 || canvasState.currentSpline[canvasState.currentSpline.length - 1] !== i) {
+                                canvasState.currentSpline.push(i);
+                            }
                         }
 
                         p.redraw();
@@ -721,7 +762,6 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
             const allInteractions: Array<{
                 weftId: number,
                 sequence: number,
-                pathId: number,
                 warpIdx: number,
                 isTopInteraction: boolean,
                 originalWarpSys: number // Physical system of the warp at interaction.warpIdx
@@ -734,7 +774,6 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
                             allInteractions.push({
                                 weftId: entry.weft,
                                 sequence: entry.sequence,
-                                pathId: entry.pathId,
                                 warpIdx: current_warp_idx,
                                 isTopInteraction: true,
                                 originalWarpSys: warp_column_data.warpSys
@@ -746,7 +785,6 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
                             allInteractions.push({
                                 weftId: entry.weft,
                                 sequence: entry.sequence,
-                                pathId: entry.pathId,
                                 warpIdx: current_warp_idx,
                                 isTopInteraction: false,
                                 originalWarpSys: warp_column_data.warpSys
@@ -773,8 +811,8 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
 
             // Step 3: Sort allInteractions by pathId, then by sequence.
             allInteractions.sort((a, b) => {
-                if (a.pathId !== b.pathId) {
-                    return a.pathId - b.pathId;
+                if (a.weftId !== b.weftId) {
+                    return a.weftId - b.weftId;
                 }
                 return a.sequence - b.sequence;
             });
@@ -807,10 +845,10 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
                 const prevInteractionGlobal = i > 0 ? allInteractions[i - 1] : null;
                 let startNewPass = false;
 
-                if (prevInteractionGlobal && currentInteraction.pathId !== prevInteractionGlobal.pathId) {
+                if (prevInteractionGlobal && currentInteraction.weftId !== prevInteractionGlobal.weftId) {
                     startNewPass = true;
                 } else if (prevInteractionGlobal &&
-                    currentInteraction.pathId === prevInteractionGlobal.pathId &&
+                    currentInteraction.weftId === prevInteractionGlobal.weftId &&
                     currentInteraction.weftId === prevInteractionGlobal.weftId &&
                     currentInteraction.warpIdx === prevInteractionGlobal.warpIdx && // Explicit Turn
                     currentInteraction.isTopInteraction !== prevInteractionGlobal.isTopInteraction &&
@@ -818,7 +856,7 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
                     startNewPass = true;
                 } else if (currentPassInteractions.length > 0 &&
                     prevInteractionGlobal &&
-                    currentInteraction.pathId === prevInteractionGlobal.pathId &&
+                    currentInteraction.weftId === prevInteractionGlobal.weftId &&
                     currentInteraction.weftId === prevInteractionGlobal.weftId) { // Trend Reversal
                     const lastInteractionInCurrentPass = currentPassInteractions[currentPassInteractions.length - 1];
                     let newTrendSegment: 'increasing' | 'decreasing' | 'stationary' = 'stationary';
@@ -961,7 +999,7 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
                     if (currentPassFirstInt.warpIdx === prevPassLastInt.warpIdx &&
                         currentPassFirstInt.isTopInteraction !== prevPassLastInt.isTopInteraction &&
                         currentPassFirstInt.weftId === prevPassLastInt.weftId &&
-                        currentPassFirstInt.pathId === prevPassLastInt.pathId) {
+                        currentPassFirstInt.weftId === prevPassLastInt.weftId) {
                         isTurnContinuation = true;
                         turnContext = {
                             turnWarpIdx: currentPassFirstInt.warpIdx,
