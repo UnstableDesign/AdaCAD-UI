@@ -6,6 +6,7 @@ import { OperationDescriptionsService } from '../../../../core/provider/operatio
 import { OperationService } from '../../../../core/provider/operation.service';
 import { TreeService } from '../../../../core/provider/tree.service';
 import { MediaService } from '../../../../core/provider/media.service';
+import { MaterialsService } from '../../../../core/provider/materials.service';
 import { map, startWith } from 'rxjs/operators';
 import { CdkTextareaAutosize } from '@angular/cdk/text-field';
 import {NgZone} from '@angular/core';
@@ -74,7 +75,8 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
     public ops: OperationService,
     public op_desc: OperationDescriptionsService,
     public mediaService: MediaService,
-    private _ngZone: NgZone) { 
+    private _ngZone: NgZone,
+    private materialsService: MaterialsService) { 
 
 
 
@@ -308,9 +310,35 @@ export class ParameterComponent implements OnInit, OnDestroy, AfterViewInit {
     if (operationDefinition && 'createSketch' in operationDefinition && typeof operationDefinition.createSketch === 'function') {
 
       const updateCallbackFn = (newCanvasState: any) => {
-        // Update the local component param value (important for subsequent saves/internal updates)
+        // 1. Update the canvasState in the component param value to the newCanvasState
+        //    This ensures that if findOrCreateMaterialByHex fails or this logic has an issue,
+        //    the raw sketch state is still preserved at a base level.
         this.param.value = newCanvasState;
-        // Emit the change event
+
+        // 2. Resolve weft colors used in the sketch to AdaCAD material IDs
+        if (this.param.type === 'p5-canvas' &&
+          newCanvasState &&
+          newCanvasState.generatedDraft &&
+          Array.isArray(newCanvasState.generatedDraft.weftColors)) {
+
+          const sketchColors: string[] = newCanvasState.generatedDraft.weftColors;
+          const resolvedIds: number[] = [];
+
+          sketchColors.forEach((hexColor, sketchWeftId) => {
+            const nameSuggestion = `CrossSection Weft ${String.fromCharCode(97 + sketchWeftId)}`;
+            try {
+              const materialId = this.materialsService.findOrCreateMaterialByHex(hexColor, nameSuggestion);
+              resolvedIds.push(materialId);
+            } catch (e) {
+              console.error(`Error in findOrCreateMaterialByHex for color ${hexColor} (sketchWeftId: ${sketchWeftId}):`, e);
+              resolvedIds.push(0); // Fallback to material ID 0 if service call fails
+            }
+          });
+          newCanvasState.generatedDraft.resolvedSketchMaterialIds = resolvedIds;
+        }
+
+        // 3. Emit that a change has occurred to the canvasState
+        // Triggers onParamChange, which saves to the tree and notifies the op chain.
         this.onParamChange(newCanvasState);
       };
 

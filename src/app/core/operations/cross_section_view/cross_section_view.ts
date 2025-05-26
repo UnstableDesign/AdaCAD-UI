@@ -63,8 +63,6 @@ const perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>) => {
     // const weftSystemsOpParam: number = getOpParamValById(paramIds.weftSystems, op_params);
     const numWarpsOpParam: number = getOpParamValById(paramIds.numWarps, op_params);
 
-    console.log("canvasStateOpParam:", canvasStateOpParam.warpData, canvasStateOpParam.generatedDraft);
-
     // Step 1: Validate Input Params
     // Check if generic draft from canvasStateOpParam, and other params, are valid
     let genericDraftData;
@@ -101,12 +99,20 @@ const perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>) => {
     // Step 2: Create Draft object using genericDraftData
     const pattern = new Sequence.TwoD();
     const rowSystemMappingArray: Array<number> = [];
+    const rowShuttleMappingArray: Array<number> = [];
 
     if (genericDraftData.rows.length > 0) {
+        const resolvedMaterialIds = genericDraftData.resolvedSketchMaterialIds || [];
         genericDraftData.rows.forEach(genericRow => {
             // AdaCAD draft rows are top-first, so prepend to pattern
             pattern.unshiftWeftSequence(new Sequence.OneD(genericRow.cells).val());
             rowSystemMappingArray.unshift(genericRow.weftId);
+
+            let materialId = 0; // Default material ID
+            if (typeof genericRow.weftId === 'number' && genericRow.weftId < resolvedMaterialIds.length) {
+                materialId = resolvedMaterialIds[genericRow.weftId];
+            }
+            rowShuttleMappingArray.unshift(materialId);
         });
     } else {
         // Create a single blank row when genericDraftData.rows is empty
@@ -132,10 +138,10 @@ const perform = (op_params: Array<OpParamVal>, op_inputs: Array<OpInput>) => {
 
     d.rowSystemMapping = rowSystemMappingArray.length > 0 ? rowSystemMappingArray : [0];
 
-    // Populate Shuttle Mappings (Default)
+    // Populate Shuttle Mappings
     const numColsInDraft = d.drawdown[0] ? d.drawdown[0].length : (numWarpsOpParam > 0 ? numWarpsOpParam : 1);
     d.colShuttleMapping = Array(numColsInDraft).fill(0);
-    d.rowShuttleMapping = Array(d.drawdown.length > 0 ? d.drawdown.length : 1).fill(0);
+    d.rowShuttleMapping = rowShuttleMappingArray.length > 0 ? rowShuttleMappingArray : [0];
 
     return Promise.resolve([d]);
 };
@@ -755,7 +761,8 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
             // Initialize/reset generatedDraft for the new calculation
             currentCanvasState.generatedDraft = {
                 rows: [],
-                colSystemMapping: []
+                colSystemMapping: [],
+                weftColors: ACCESSIBLE_COLORS.slice(0, weftSystems)
             };
 
             // Step 1: Create allInteractions List

@@ -198,4 +198,40 @@ export class MaterialsService {
     return standard;
   }
 
+  public findOrCreateMaterialByHex(hexColor: string, nameSuggestion: string): number {
+    if (!hexColor) {
+      console.warn('MaterialsService.findOrCreateMaterialByHex called with no hexColor, returning ID 0');
+      if (this.materials.length > 0) {
+        return this.materials[0].id;
+      }
+      return 0;
+    }
+
+    const normalizedHex = hexColor.toLowerCase();
+
+    // 1. Search for an existing material with the exact hex
+    const existingMaterial = this.materials.find(m => m.color.toLowerCase() === normalizedHex);
+
+    if (existingMaterial) {
+      return existingMaterial.id;
+    } else {
+      // 2. If not found, create a new material
+      const newMaterialProps: Partial<Material> = {
+        name: nameSuggestion || `Material ${normalizedHex}`,
+        color: normalizedHex,
+        diameter: 1,
+        thickness: 100,
+        type: 1,
+        insert: true,
+        visible: true,
+        notes: "Auto-created by operation"
+      };
+
+      let materialToAdd = createMaterial(newMaterialProps);
+
+      this.addShuttle(materialToAdd);
+
+      return materialToAdd.id;
+    }
+  }
 }
