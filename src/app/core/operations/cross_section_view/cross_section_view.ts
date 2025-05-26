@@ -269,8 +269,8 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
             p.background(255);
             drawWarpDotsAndLines();
             drawWeftSysIcons();
-            drawWeftDots();
             drawPermanentSplines();
+            drawWeftDots();
             drawStickySpline();
             drawDeleteButton();
         };
@@ -344,44 +344,72 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
 
         function drawPermanentSplines() {
             for (let spline of canvasState.permanentSplines) {
-                p.stroke(ACCESSIBLE_COLORS[spline.weft % ACCESSIBLE_COLORS.length]);
                 p.strokeWeight(3);
                 p.noFill();
 
+                // Construct the points array for the spline
                 let points = [];
+                if (spline.dots.length > 0) {
+                    for (let i = 0; i < spline.dots.length; i++) {
+                        let dot = canvasState.weftDots[spline.dots[i]];
+                        points.push({ x: dot.x, y: dot.y });
 
-                for (let i = 0; i < spline.dots.length; i++) {
-                    let dot = canvasState.weftDots[spline.dots[i]];
-                    points.push({ x: dot.x, y: dot.y });
+                        if (i > 0 && i < spline.dots.length - 1) {
+                            let prevDot = canvasState.weftDots[spline.dots[i - 1]];
+                            let nextDot = canvasState.weftDots[spline.dots[i + 1]];
 
-                    if (i > 0 && i < spline.dots.length - 1) {
-                        let prevDot = canvasState.weftDots[spline.dots[i - 1]];
-                        let nextDot = canvasState.weftDots[spline.dots[i + 1]];
+                            let prevDirection = dot.x - prevDot.x;
+                            let nextDirection = nextDot.x - dot.x;
 
-                        let prevDirection = dot.x - prevDot.x;
-                        let nextDirection = nextDot.x - dot.x;
-
-                        // Add a slight outward offset if direction reverses
-                        if ((prevDirection > 0 && nextDirection < 0) || (prevDirection < 0 && nextDirection > 0)) {
-                            let offsetX = prevDirection > 0 ? 20 : -20;
+                            // open question: what is this if statement doing?
+                            if ((prevDirection > 0 && nextDirection < 0) || (prevDirection < 0 && nextDirection > 0)) {
                             let midY = (prevDot.y + nextDot.y) / 2;
-                            points.push({ x: dot.x + offsetX, y: midY });
+                            points.push({ x: dot.x, y: midY });
+                            }
                         }
                     }
                 }
 
-                if (points.length < 3) {
-                    for (let j = 0; j < points.length - 1; j++) {
-                        p.line(points[j].x, points[j].y, points[j + 1].x, points[j + 1].y);
+                if (points.length < 2) continue; // Need at least two points to draw
+
+                const baseWeftColor = p.color(ACCESSIBLE_COLORS[spline.weft % ACCESSIBLE_COLORS.length]);
+                // Use a gradient with saturation/brightness shift
+                p.colorMode(p.HSB, 360, 100, 100);
+                const baseHue = p.hue(baseWeftColor);
+                const baseSat = Math.min(p.saturation(baseWeftColor) * 1.25, 100); // Max 100 to prevent overflow
+                const baseBright = p.brightness(baseWeftColor) * 0.8; // Slight brightness reduction
+                const startColor = p.color(baseHue, baseSat, baseBright);
+                // Reset color mode to RGB
+                p.colorMode(p.RGB, 255);
+
+                const numSubdivisionsPerMainSegment = 15;
+
+                for (let i = 0; i < points.length - 1; i++) {
+                    // Define points for p.curvePoint: p1 and p2 are the current segment endpoints
+                    // p0 and p3 are control points. For ends of the spline, p0=p1 and p3=p2.
+                    const p0 = (i === 0) ? points[i] : points[i - 1];
+                    const p1 = points[i];
+                    const p2 = points[i + 1];
+                    const p3 = (i === points.length - 2) ? points[i + 1] : points[i + 2];
+
+                    for (let k = 0; k < numSubdivisionsPerMainSegment; k++) {
+                        const t_local0 = k / numSubdivisionsPerMainSegment;
+                        const t_local1 = (k + 1) / numSubdivisionsPerMainSegment;
+
+                        const pt_start_x = p.curvePoint(p0.x, p1.x, p2.x, p3.x, t_local0);
+                        const pt_start_y = p.curvePoint(p0.y, p1.y, p2.y, p3.y, t_local0);
+                        const pt_end_x = p.curvePoint(p0.x, p1.x, p2.x, p3.x, t_local1);
+                        const pt_end_y = p.curvePoint(p0.y, p1.y, p2.y, p3.y, t_local1);
+
+                        // Calculate global progress along the entire spline
+                        const t_avg_local = (t_local0 + t_local1) / 2;
+                        // points.length - 1 is the total number of segments in the 'points' path
+                        const globalProgress = points.length > 1 ? (i + t_avg_local) / (points.length - 1) : 1;
+
+                        const segmentColor = p.lerpColor(startColor, baseWeftColor, globalProgress);
+                        p.stroke(segmentColor);
+                        p.line(pt_start_x, pt_start_y, pt_end_x, pt_end_y);
                     }
-                } else {
-                    p.beginShape();
-                    p.curveVertex(points[0].x, points[0].y);
-                    for (let pt of points) {
-                        p.curveVertex(pt.x, pt.y);
-                    }
-                    p.curveVertex(points[points.length - 1].x, points[points.length - 1].y);
-                    p.endShape();
                 }
             }
         }
