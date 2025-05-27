@@ -202,8 +202,7 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
             selectedDots: [],
             dotFills: [],
             activeWeft: null,
-            currentSpline: [],
-            permanentSplines: [],
+            pathsByWeft: {},
             warpData: [],
             clickSequence: 0,
             hoveredDotIndex: -1,
@@ -211,7 +210,8 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
             deleteButtonBounds: null,
             generatedDraft: {
                 rows: [],
-                colSystemMapping: []
+                colSystemMapping: [],
+                weftColors: []
             }
         };
 
@@ -269,9 +269,9 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
             p.background(255);
             drawWarpDotsAndLines();
             drawWeftSysIcons();
-            drawPermanentSplines();
+            drawSplines();
             drawWeftDots();
-            drawStickySpline();
+            drawStickyLineToMouse();
             drawDeleteButton();
         };
 
@@ -319,6 +319,25 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
             }
         }
 
+        function drawSplines() {
+            for (const weftIdStr in canvasState.pathsByWeft) {
+                const weftId = parseInt(weftIdStr, 10);
+                const anchors = canvasState.pathsByWeft[weftId];
+
+                if (anchors && anchors.length >= 2) {
+                    try {
+                        calculateBezierControlPoints(anchors);
+                    } catch (e) {
+                        console.error('[CrossSectionView] Error calling calculateBezierControlPoints in draw:', e);
+                        console.error('Path data that caused error:', JSON.parse(JSON.stringify({ weftId, anchors })));
+                        p.noLoop(); // Stop looping if this error occurs
+                        return;
+                    }
+                    renderBezierPath(anchors, weftId, p);
+                }
+            }
+        }
+
         function drawWeftDots() {
             for (let i = 0; i < canvasState.weftDots.length; i++) {
                 let dot = canvasState.weftDots[i];
@@ -342,84 +361,16 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
             }
         }
 
-        function drawPermanentSplines() {
-            for (let spline of canvasState.permanentSplines) {
-                p.strokeWeight(3);
-                p.noFill();
-
-                // Construct the points array for the spline
-                let points = [];
-                if (spline.dots.length > 0) {
-                    for (let i = 0; i < spline.dots.length; i++) {
-                        let dot = canvasState.weftDots[spline.dots[i]];
-                        points.push({ x: dot.x, y: dot.y });
-
-                        if (i > 0 && i < spline.dots.length - 1) {
-                            let prevDot = canvasState.weftDots[spline.dots[i - 1]];
-                            let nextDot = canvasState.weftDots[spline.dots[i + 1]];
-
-                            let prevDirection = dot.x - prevDot.x;
-                            let nextDirection = nextDot.x - dot.x;
-
-                            // open question: what is this if statement doing?
-                            if ((prevDirection > 0 && nextDirection < 0) || (prevDirection < 0 && nextDirection > 0)) {
-                            let midY = (prevDot.y + nextDot.y) / 2;
-                            points.push({ x: dot.x, y: midY });
-                            }
-                        }
-                    }
+        function drawStickyLineToMouse() {
+            if (canvasState.activeWeft !== null) {
+                const activePathAnchors = canvasState.pathsByWeft[canvasState.activeWeft];
+                if (activePathAnchors && activePathAnchors.length > 0) {
+                    const activeWeftColorHex = ACCESSIBLE_COLORS[canvasState.activeWeft % ACCESSIBLE_COLORS.length];
+                    const lastAnchorPos = activePathAnchors[activePathAnchors.length - 1].pos;
+                    p.stroke(activeWeftColorHex);
+                    p.strokeWeight(2);
+                    p.line(lastAnchorPos.x, lastAnchorPos.y, p.mouseX, p.mouseY);
                 }
-
-                if (points.length < 2) continue; // Need at least two points to draw
-
-                const baseWeftColor = p.color(ACCESSIBLE_COLORS[spline.weft % ACCESSIBLE_COLORS.length]);
-                // Use a gradient with saturation/brightness shift
-                p.colorMode(p.HSB, 360, 100, 100);
-                const baseHue = p.hue(baseWeftColor);
-                const baseSat = Math.min(p.saturation(baseWeftColor) * 1.25, 100); // Max 100 to prevent overflow
-                const baseBright = p.brightness(baseWeftColor) * 0.8; // Slight brightness reduction
-                const startColor = p.color(baseHue, baseSat, baseBright);
-                // Reset color mode to RGB
-                p.colorMode(p.RGB, 255);
-
-                const numSubdivisionsPerMainSegment = 15;
-
-                for (let i = 0; i < points.length - 1; i++) {
-                    // Define points for p.curvePoint: p1 and p2 are the current segment endpoints
-                    // p0 and p3 are control points. For ends of the spline, p0=p1 and p3=p2.
-                    const p0 = (i === 0) ? points[i] : points[i - 1];
-                    const p1 = points[i];
-                    const p2 = points[i + 1];
-                    const p3 = (i === points.length - 2) ? points[i + 1] : points[i + 2];
-
-                    for (let k = 0; k < numSubdivisionsPerMainSegment; k++) {
-                        const t_local0 = k / numSubdivisionsPerMainSegment;
-                        const t_local1 = (k + 1) / numSubdivisionsPerMainSegment;
-
-                        const pt_start_x = p.curvePoint(p0.x, p1.x, p2.x, p3.x, t_local0);
-                        const pt_start_y = p.curvePoint(p0.y, p1.y, p2.y, p3.y, t_local0);
-                        const pt_end_x = p.curvePoint(p0.x, p1.x, p2.x, p3.x, t_local1);
-                        const pt_end_y = p.curvePoint(p0.y, p1.y, p2.y, p3.y, t_local1);
-
-                        // Calculate global progress along the entire spline
-                        const t_avg_local = (t_local0 + t_local1) / 2;
-                        // points.length - 1 is the total number of segments in the 'points' path
-                        const globalProgress = points.length > 1 ? (i + t_avg_local) / (points.length - 1) : 1;
-
-                        const segmentColor = p.lerpColor(startColor, baseWeftColor, globalProgress);
-                        p.stroke(segmentColor);
-                        p.line(pt_start_x, pt_start_y, pt_end_x, pt_end_y);
-                    }
-                }
-            }
-        }
-
-        function drawStickySpline() {
-            if (canvasState.currentSpline.length > 0 && canvasState.activeWeft !== null) {
-                let lastDot = canvasState.weftDots[canvasState.currentSpline[canvasState.currentSpline.length - 1]];
-                p.stroke(ACCESSIBLE_COLORS[canvasState.activeWeft % ACCESSIBLE_COLORS.length]);
-                p.strokeWeight(2);
-                p.line(lastDot.x, lastDot.y, p.mouseX, p.mouseY);
             }
         }
 
@@ -508,6 +459,7 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
         }
 
         p.mousePressed = function mousePressed() {
+            let clickedDotInfo: { index: number, pos: { x: number, y: number } } | null = null;
             let clicked = false;
             let spacing = (SKETCH_CANVAS_HEIGHT - SKETCH_TOP_MARGIN - SKETCH_BOTTOM_MARGIN) / (weftSystems + 1);
 
@@ -517,25 +469,16 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
                 if (p.dist(p.mouseX, p.mouseY, SKETCH_LEFT_MARGIN / 2, y) < 12) {
                     const clickedWeftId = i;
                     if (canvasState.activeWeft === clickedWeftId) {
-                        // User clicked the same active weft button (to deselect)
-                        canvasState.currentSpline = [];
+                        // User clicked the same active weft button (to deselect/complete open path)
                         canvasState.activeWeft = null;
                         p.noLoop();
                     } else {
-                        // User clicked a new weft button or re-selected a previously deselected one.
+                        // User clicked a new weft button or re-selected one.
+                        // If there was an active path for a *different* weft, finalize it first.
                         canvasState.activeWeft = clickedWeftId;
-                        canvasState.currentSpline = []; // Start with an empty spline for the sticky line
-
-                        // Try to find an unclosed path for this weft in permanentSplines to resume from
-                        let resumedFromSpline = false;
-                        for (let spline of canvasState.permanentSplines) {
-                            if (spline.weft === canvasState.activeWeft && !spline.closed && spline.dots.length > 0) {
-                                canvasState.currentSpline = [spline.dots[spline.dots.length - 1]];
-                                resumedFromSpline = true;
-                                break;
-                            }
+                        if (!canvasState.pathsByWeft[clickedWeftId]) {
+                            canvasState.pathsByWeft[clickedWeftId] = [];
                         }
-                        // If no unclosed path was found, currentSpline remains empty, signifying a new path segment will start on the next dot click.
                         p.loop();
                     }
                     clicked = true;
@@ -588,15 +531,23 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
                         weftArray.splice(mostRecentIndex, 1);
                         updateSequenceNumbers(removedSequence);
 
-                        // Update splines
-                        canvasState.permanentSplines = canvasState.permanentSplines.map(spline => {
-                            if (spline.weft === weftToRemove) {
-                                return { ...spline, dots: spline.dots.filter(idx => idx !== i) };
-                            }
-                            return spline;
-                        }).filter(spline => spline.dots.length >= 2);
+                        // Update splines by removing anchors associated with the deleted dot
+                        const weftOfPathToUpdate = weftToRemove;
+                        if (canvasState.pathsByWeft[weftOfPathToUpdate]) {
+                            let currentAnchorsForWeft = canvasState.pathsByWeft[weftOfPathToUpdate];
+                            const updatedAnchors = currentAnchorsForWeft.filter(anchor => anchor.dotIdx !== i);
 
-                        // console.log(`Deleted weft ${weftToRemove} from dot ${i}, updated warpData:`, JSON.parse(JSON.stringify(canvasState.warpData)));
+                            if (updatedAnchors.length === 0) {
+                                // Path is now empty, can keep as empty array or delete the key
+                                canvasState.pathsByWeft[weftOfPathToUpdate] = [];
+                            } else if (updatedAnchors.length > 0 && updatedAnchors.length < 2) {
+                                // Path is too short to be a Bezier curve, but still has a point
+                                canvasState.pathsByWeft[weftOfPathToUpdate] = updatedAnchors;
+                            } else { // >= 2 anchors, still a drawable curve
+                                calculateBezierControlPoints(updatedAnchors); // Recalculate CPs for the modified path
+                                canvasState.pathsByWeft[weftOfPathToUpdate] = updatedAnchors;
+                            }
+                        }
                     }
 
                     // Reset hover state
@@ -618,130 +569,100 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
                 for (let i = 0; i < canvasState.weftDots.length; i++) {
                     let dot = canvasState.weftDots[i];
                     if (p.dist(p.mouseX, p.mouseY, dot.x, dot.y) < 10) {
-                        // Get warp index and whether it's a top or bottom dot
-                        const { warpIdx, isTop } = getDotInfo(i);
-                        const weftArray = isTop ? canvasState.warpData[warpIdx].topWeft : canvasState.warpData[warpIdx].bottomWeft;
-
-                        // Check if this dot has the active weft assigned
-                        // This condition was for resuming by clicking a dot.
-                        // With the new model, resuming is handled by weft icon selection.
-                        // Clicking a dot while a weft is active is always about *extending* the current path.
-                        // if (canvasState.selectedDots.includes(i) && canvasState.dotFills[i].includes(canvasState.activeWeft)) { ... }
-
-                        // Add new weft assignment to warpData
-                        if (!canvasState.selectedDots.includes(i)) {
-                            canvasState.selectedDots.push(i);
-                            canvasState.dotFills[i] = [canvasState.activeWeft];
-                            weftArray.push({
-                                weft: canvasState.activeWeft, // Path identity is the weftId
-                                sequence: canvasState.clickSequence
-                                // pathId: canvasState.currentPathId, // Removed
-                            });
-                            canvasState.clickSequence++;
-                        } else if (!canvasState.dotFills[i].includes(canvasState.activeWeft)) {
-                            canvasState.dotFills[i].push(canvasState.activeWeft);
-                            weftArray.push({
-                                weft: canvasState.activeWeft, // Path identity is the weftId
-                                sequence: canvasState.clickSequence
-                                // pathId: canvasState.currentPathId, // Removed
-                            });
-                            canvasState.clickSequence++;
-                        } else if (canvasState.dotFills[i].includes(canvasState.activeWeft) && canvasState.currentSpline.length === 0) {
-                            // This case implies clicking on a dot that's already part of the active weft's path,
-                            // AND currentSpline is empty. This shouldn't happen if weft icon click correctly sets up currentSpline for resumption.
-                            // If it does, treat as starting a new segment from this dot.
-                            canvasState.currentSpline = [i];
-                            p.loop();
-                            p.redraw();
-                            updateCallback(canvasState);
-                            return;
-                        }
-
-
-                        // Manage permanentSplines
-                        if (canvasState.currentSpline.length > 0) {
-                            // Extending an existing segment (could be from resumption or continuous drawing)
-                            let prevDot = canvasState.currentSpline[canvasState.currentSpline.length - 1];
-                            if (prevDot !== i) { // Only add if it's a new dot
-                                let extendedExisting = false;
-                                for (let spline of canvasState.permanentSplines) {
-                                    if (spline.weft === canvasState.activeWeft && !spline.closed && spline.dots.length > 0 && spline.dots[spline.dots.length - 1] === prevDot) {
-                                        spline.dots.push(i);
-                                        extendedExisting = true;
-                                        break;
-                                    }
-                                }
-                                if (!extendedExisting) {
-                                    // This implies currentSpline had a 'prevDot' but it wasn't the end of an existing permanentSpline.
-                                    // This could happen if currentSpline was [resumeDot] and this is the first extension click.
-                                    // Or, if somehow a segment started without being added to permanentSplines yet.
-                                    // Create a new spline starting with prevDot and current dot i
-                                    canvasState.permanentSplines.push({ weft: canvasState.activeWeft, dots: [prevDot, i], closed: false });
-                                }
-                            }
-                        } else {
-                            // Starting a brand new spline segment for this weft (currentSpline was empty)
-                            canvasState.permanentSplines.push({ weft: canvasState.activeWeft, dots: [i], closed: false });
-                        }
-
-
-                        // Path Closure Logic
-                        if (canvasState.currentSpline.length > 0 && canvasState.currentSpline[0] === i && canvasState.currentSpline.length > 1) {
-                            let splineToClose = null;
-                            for (let spline of canvasState.permanentSplines) {
-                                if (spline.weft === canvasState.activeWeft && !spline.closed && spline.dots[0] === i && spline.dots[spline.dots.length - 1] === canvasState.currentSpline[canvasState.currentSpline.length - 1]) {
-                                    // Check if the currentSpline's actual first point matches the clicked dot 'i'
-                                    // AND the last point of the spline in permanentSplines matches the last point of currentSpline before adding 'i'
-                                    // More direct: find the spline whose first point is 'i' and last point is the one before 'i' in currentSpline
-                                    if (spline.dots[spline.dots.length - 1] === i) { // Already added by previous block if it's a new point.
-                                        // This means the spline ends with 'i', and its first point is also 'i'.
-                                    } else {
-                                        spline.dots.push(i); // Add the closing dot to the visual spline
-                                    }
-                                    splineToClose = spline;
-                                    break;
-                                } else if (spline.weft === canvasState.activeWeft && !spline.closed && spline.dots.length > 0 && spline.dots[0] === i) {
-                                    // Simpler: if we are closing to the first point of *any* segment of this weft.
-                                    // This implies the current drawing sequence in currentSpline should lead to this 'i'.
-                                    // The last point of currentSpline (before adding 'i') should be the last point of the spline being closed.
-                                    const lastPointInCurrentSplineBeforeClosing = canvasState.currentSpline[canvasState.currentSpline.length - 1];
-                                    if (spline.dots[spline.dots.length - 1] === lastPointInCurrentSplineBeforeClosing) {
-                                        spline.dots.push(i);
-                                        splineToClose = spline;
-                                        break;
-                                    }
-                                }
-                            }
-
-                            if (splineToClose) {
-                                splineToClose.closed = true;
-                            }
-                            // Else, if no specific spline was identified to close, this click might be on the first dot but not forming a closure.
-
-                            canvasState.currentSpline = [];
-                            canvasState.activeWeft = null;
-                            p.noLoop();
-                        } else {
-                            // Add to currentSpline for the sticky line
-                            if (canvasState.currentSpline.length === 0 || canvasState.currentSpline[canvasState.currentSpline.length - 1] !== i) {
-                                canvasState.currentSpline.push(i);
-                            }
-                        }
-
-                        p.redraw();
-                        // Recalculate draft
-                        generateDraft(canvasState, numWarps, warpSystems);
-                        // Report the new canvasState to the operation
-                        updateCallback(canvasState);
-                        return;
+                        clickedDotInfo = { index: i, pos: dot };
+                        break;
                     }
                 }
             }
 
-            // Clicks outside of any dots
+            // Dot click handling (if a weft is active)
+            if (clickedDotInfo && canvasState.activeWeft !== null) {
+                const dotIndex = clickedDotInfo.index;
+                const dotPosition = clickedDotInfo.pos; // This is already {x, y}
+
+                // Create a new anchor for this click
+                const newAnchor = {
+                    id: generateUUID(),
+                    dotIdx: dotIndex,
+                    pos: { x: dotPosition.x, y: dotPosition.y },
+                    cpBefore: { x: dotPosition.x, y: dotPosition.y }, // Initial control points
+                    cpAfter: { x: dotPosition.x, y: dotPosition.y }   // Will be calculated by drawPermanentSplines or when finalized
+                };
+
+                // --- Update Weave Structure ---
+                const { warpIdx, isTop } = getDotInfo(dotIndex);
+                const weftArray = isTop ? canvasState.warpData[warpIdx].topWeft : canvasState.warpData[warpIdx].bottomWeft;
+
+                if (!canvasState.selectedDots.includes(dotIndex)) {
+                    canvasState.selectedDots.push(dotIndex);
+                    canvasState.dotFills[dotIndex] = [canvasState.activeWeft];
+                    weftArray.push({
+                        weft: canvasState.activeWeft,
+                        sequence: canvasState.clickSequence
+                    });
+                    canvasState.clickSequence++;
+                } else if (!canvasState.dotFills[dotIndex].includes(canvasState.activeWeft)) {
+                    canvasState.dotFills[dotIndex].push(canvasState.activeWeft);
+                    weftArray.push({
+                        weft: canvasState.activeWeft,
+                        sequence: canvasState.clickSequence
+                    });
+                    canvasState.clickSequence++;
+                } else if (canvasState.dotFills[dotIndex].includes(canvasState.activeWeft) &&
+                    canvasState.activeWeft !== null &&
+                    (!canvasState.pathsByWeft[canvasState.activeWeft] || canvasState.pathsByWeft[canvasState.activeWeft].length === 0)
+                ) {
+                    // Clicking an existing dot of the active weft type, but no current path segment started from icon click.
+                    // This implies starting a new path from this dot (or resuming, though resumption is now primarily via weft icon).
+                    // For simplicity, treat as starting a new segment here if currentAnchors is empty.
+                    if (canvasState.activeWeft !== null) {
+                        if (!canvasState.pathsByWeft[canvasState.activeWeft]) {
+                            canvasState.pathsByWeft[canvasState.activeWeft] = [];
+                        }
+                        canvasState.pathsByWeft[canvasState.activeWeft].push(newAnchor);
+                    }
+                    p.loop(); // Ensure draw loop is running for sticky line
+                    p.redraw();
+                    generateDraft(canvasState, numWarps, warpSystems);
+                    updateCallback(canvasState);
+                    return; // End mousePressed here
+                }
+                // --- End Weave Structure Update ---
+
+                // --- Spline Logic: Add anchor ---
+                // Paths can't be closed loops. Clicking any dot extends the path or starts a new one.
+                if (canvasState.activeWeft !== null && canvasState.pathsByWeft[canvasState.activeWeft] && canvasState.pathsByWeft[canvasState.activeWeft].length > 0) {
+                    const currentActivePath = canvasState.pathsByWeft[canvasState.activeWeft];
+                    const lastAnchorInCurrentPath = currentActivePath[currentActivePath.length - 1];
+                    // Only add if it's a new dot (based on dotIdx)
+                    if (lastAnchorInCurrentPath.dotIdx !== newAnchor.dotIdx) {
+                        currentActivePath.push(newAnchor);
+                    }
+                    // If clicking the same last dot, do nothing to currentAnchors (no duplicate anchor)
+                } else {
+                    // This is the first anchor of a new path segment.
+                    if (canvasState.activeWeft !== null) {
+                        if (!canvasState.pathsByWeft[canvasState.activeWeft]) {
+                            canvasState.pathsByWeft[canvasState.activeWeft] = [];
+                        }
+                        canvasState.pathsByWeft[canvasState.activeWeft].push(newAnchor);
+                    }
+                }
+
+                // Ensure draw loop is running for sticky line if path not closed (which is always true now for active paths)
+                if (canvasState.activeWeft !== null) {
+                    p.loop();
+                }
+
+                p.redraw();
+                generateDraft(canvasState, numWarps, warpSystems);
+                updateCallback(canvasState);
+                return;
+            }
+
+            // Clicks outside of any dots (if an active weft is selected)
             if (!clicked && canvasState.activeWeft !== null) {
-                // Current drawing path ends. No increment of currentPathId, next new path selection will.
-                canvasState.currentSpline = [];
+                // Clicked outside: finalize current open path if it exists
                 canvasState.activeWeft = null;
                 p.noLoop();
                 p.redraw();
@@ -750,36 +671,6 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
                 // Report the new canvasState to the operation
                 updateCallback(canvasState);
             }
-        }
-
-        // Helper Functions //
-        function updateSequenceNumbers(removedSequence: number) {
-            // Update all sequence numbers in warpData
-            for (let warp of canvasState.warpData) {
-                // Process top wefts
-                for (let assignment of warp.topWeft) {
-                    if (assignment.sequence > removedSequence) {
-                        assignment.sequence--;
-                    }
-                }
-
-                // Process bottom wefts
-                for (let assignment of warp.bottomWeft) {
-                    if (assignment.sequence > removedSequence) {
-                        assignment.sequence--;
-                    }
-                }
-            }
-
-            // Decrement the global counter
-            canvasState.clickSequence--;
-        }
-
-        function getDotInfo(dotIndex: number) {
-            return {
-                warpIdx: Math.floor(dotIndex / 2),
-                isTop: dotIndex % 2 === 0
-            };
         }
 
         function generateDraft(currentCanvasState: any, currentNumWarps: number, currentWarpSystems: number) {
@@ -1170,6 +1061,146 @@ const createSketch = (op_params: Array<OpParamVal>, updateCallback: Function) =>
             processedRowsData.forEach(rowData => {
                 currentCanvasState.generatedDraft.rows.push({ weftId: rowData.weftId, cells: rowData.cells });
             });
+        }
+
+        // Helper Functions
+        function updateSequenceNumbers(removedSequence: number) {
+            // Update all sequence numbers in warpData
+            for (let warp of canvasState.warpData) {
+                // Process top wefts
+                for (let assignment of warp.topWeft) {
+                    if (assignment.sequence > removedSequence) {
+                        assignment.sequence--;
+                    }
+                }
+
+                // Process bottom wefts
+                for (let assignment of warp.bottomWeft) {
+                    if (assignment.sequence > removedSequence) {
+                        assignment.sequence--;
+                    }
+                }
+            }
+
+            // Decrement the global counter
+            canvasState.clickSequence--;
+        }
+
+        function getDotInfo(dotIndex: number) {
+            return {
+                warpIdx: Math.floor(dotIndex / 2),
+                isTop: dotIndex % 2 === 0
+            };
+        }
+
+        // Bezier helper functions
+        function generateUUID() {
+            // Generate a simple unique ID for anchors
+            return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        }
+
+        function calculateBezierControlPoints(anchors, tension = 0.16666) {
+            if (!anchors || anchors.length < 1) {
+                return;
+            }
+            if (anchors.length === 1) {
+                anchors[0].cpBefore = { ...anchors[0].pos };
+                anchors[0].cpAfter = { ...anchors[0].pos };
+                return;
+            }
+            const n = anchors.length;
+            for (let i = 0; i < n; i++) {
+                // Always use open spline logic for p0 and p2
+                const p0 = anchors[Math.max(0, i - 1)].pos;
+                const p1 = anchors[i].pos;
+                const p2 = anchors[Math.min(n - 1, i + 1)].pos;
+
+                // Calculate cpAfter for p1 (current anchor at index i)
+                if (i < n - 1) { // Can calculate cpAfter if not the last point
+                    anchors[i].cpAfter = {
+                        x: p1.x + (p2.x - p0.x) * tension,
+                        y: p1.y + (p2.y - p0.y) * tension,
+                    };
+                } else { // Last point of an open spline
+                    anchors[i].cpAfter = { ...p1 };
+                }
+
+                // Calculate cpBefore for p1 (current anchor at index i)
+                if (i > 0) { // Can calculate cpBefore if not the first point
+                    anchors[i].cpBefore = {
+                        x: p1.x - (p2.x - p0.x) * tension,
+                        y: p1.y - (p2.y - p0.y) * tension,
+                    };
+                } else { // First point of an open spline
+                    anchors[i].cpBefore = { ...p1 };
+                }
+            }
+            // Special handling for endpoints of open splines (this logic remains largely the same as before for !isClosed)
+            if (n > 1) { // n is always > 1 here due to earlier checks
+                anchors[0].cpBefore = { ...anchors[0].pos };
+                anchors[0].cpAfter = {
+                    x: anchors[0].pos.x + (anchors[1].pos.x - anchors[0].pos.x) * tension * 2,
+                    y: anchors[0].pos.y + (anchors[1].pos.y - anchors[0].pos.y) * tension * 2
+                };
+                if (n === 2) {
+                    anchors[0].cpAfter = { x: anchors[0].pos.x + (anchors[1].pos.x - anchors[0].pos.x) * 0.333, y: anchors[0].pos.y + (anchors[1].pos.y - anchors[0].pos.y) * 0.333 };
+                }
+                anchors[n - 1].cpAfter = { ...anchors[n - 1].pos };
+                anchors[n - 1].cpBefore = {
+                    x: anchors[n - 1].pos.x - (anchors[n - 1].pos.x - anchors[n - 2].pos.x) * tension * 2,
+                    y: anchors[n - 1].pos.y - (anchors[n - 1].pos.y - anchors[n - 2].pos.y) * tension * 2
+                };
+                if (n === 2) {
+                    anchors[n - 1].cpBefore = { x: anchors[n - 1].pos.x - (anchors[n - 1].pos.x - anchors[n - 2].pos.x) * 0.333, y: anchors[n - 1].pos.y - (anchors[n - 1].pos.y - anchors[n - 2].pos.y) * 0.333 };
+                }
+            }
+        }
+
+        function renderBezierPath(pathAnchors, pathWeftId, pInstance) {
+            if (!pathAnchors || pathAnchors.length < 2) {
+                return; // Need at least two anchors to draw a segment
+            }
+
+            // pInstance refers to the p5 instance 'p'
+            pInstance.strokeWeight(3);
+            pInstance.noFill();
+
+            const baseWeftColor = pInstance.color(ACCESSIBLE_COLORS[pathWeftId % ACCESSIBLE_COLORS.length]);
+            pInstance.colorMode(pInstance.HSB, 360, 100, 100);
+            const baseHue = pInstance.hue(baseWeftColor);
+            const baseSat = Math.min(pInstance.saturation(baseWeftColor) * 1.25, 100);
+            const baseBright = pInstance.brightness(baseWeftColor) * 0.8;
+            const startColor = pInstance.color(baseHue, baseSat, baseBright);
+            pInstance.colorMode(pInstance.RGB, 255);
+
+            const numSubdivisionsPerMainSegment = 15;
+
+            for (let i = 0; i < pathAnchors.length - 1; i++) {
+                const anchor1 = pathAnchors[i];
+                const anchor2 = pathAnchors[i + 1];
+
+                const p1 = anchor1.pos;
+                const cp1_out = anchor1.cpAfter;
+                const cp2_in = anchor2.cpBefore;
+                const p2_pos = anchor2.pos;
+
+                for (let k = 0; k < numSubdivisionsPerMainSegment; k++) {
+                    const t_local0 = k / numSubdivisionsPerMainSegment;
+                    const t_local1 = (k + 1) / numSubdivisionsPerMainSegment;
+
+                    const pt_start_x = pInstance.bezierPoint(p1.x, cp1_out.x, cp2_in.x, p2_pos.x, t_local0);
+                    const pt_start_y = pInstance.bezierPoint(p1.y, cp1_out.y, cp2_in.y, p2_pos.y, t_local0);
+                    const pt_end_x = pInstance.bezierPoint(p1.x, cp1_out.x, cp2_in.x, p2_pos.x, t_local1);
+                    const pt_end_y = pInstance.bezierPoint(p1.y, cp1_out.y, cp2_in.y, p2_pos.y, t_local1);
+
+                    const t_avg_local = (t_local0 + t_local1) / 2;
+                    const globalProgress = pathAnchors.length > 1 ? (i + t_avg_local) / (pathAnchors.length - 1) : 1;
+
+                    const segmentColor = pInstance.lerpColor(startColor, baseWeftColor, globalProgress);
+                    pInstance.stroke(segmentColor);
+                    pInstance.line(pt_start_x, pt_start_y, pt_end_x, pt_end_y);
+                }
+            }
         }
     };
 };
