@@ -525,10 +525,14 @@
             "tags": ["advanced"],
             "description": "Create a drawdown from the input drafts (order 1. threading, 2. tieup, 3.lift plan)",
             "application": "To create drawdown from from a direct loom plan"
+        },
+        {
+            "name":"profile_view_sketch",
+            "displayname": "profile view sketch",
+            "tags": ["advanced"],
+            "description":"Design a draft from profile view.",
+            "application": "Explore multilayer structures through profile drafting."
         }
-
-   
-       
     ],
 
     "param": [
