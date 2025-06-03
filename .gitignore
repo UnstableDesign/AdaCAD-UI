@@ -1,0 +1,11 @@
+# Project
+.angular/
+node_modules/
+src/environments/
+
+# IDEs
+.vscode/
+.cursor/
+
+# Systems
+.DS_Store
