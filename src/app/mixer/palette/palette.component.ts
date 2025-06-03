@@ -1470,7 +1470,7 @@ calculateInitialLocation() : Point {
 /**
  * this is called from a operation or subdraft that has changed size. This means that it's connection needs to be redrawn such that 
  * it properly displays the from position on the connection
- * @param sd_id : the subdraft id associated with the change
+ * @param sd_id : the subdraft (or operation) id associated with the change 
  */
 redrawOutboundConnections(sd_id: number){
   let connections = this.tree.getOutputs(sd_id);

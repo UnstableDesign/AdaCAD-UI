@@ -327,8 +327,8 @@ export class OperationComponent implements OnInit {
     /**
    * this is called when the draft container displaying this draft has had a size change 
    */
-    updateOutboundConnections(sd_id: number){
-      this.onRedrawOutboundConnections.emit(sd_id);
+    updateOutboundConnections(){
+      this.onRedrawOutboundConnections.emit(this.id);
     }
   
 
