@@ -525,10 +525,14 @@
             "tags": ["advanced"],
             "description": "Create a drawdown from the input drafts (order 1. threading, 2. tieup, 3.lift plan)",
             "application": "To create drawdown from from a direct loom plan"
-        }
-
-   
-       
+        },
+        {
+            "name":"bitfield",
+            "tags": ["advanced"],
+            "displayname": "bitfield",
+            "description": "Takes a function from x and y values to boolean result, and applies it to each x/y position to generate a draft.",
+            "application": "For 'bitfield'-style generation of drafts that look like alien art, inspired by a post by Martin Kleppe on what used to be known as twitter."
+         }
     ],
 
     "param": [

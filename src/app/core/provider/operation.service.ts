@@ -73,6 +73,7 @@ import {flip} from '../operations/flip/flip'
 import { glitchsatin } from '../operations/glitchsatin/glitchsatin';
 import { apply_warp_mats } from '../operations/applywarpmaterials/applywarpmaterials';
 import { apply_weft_mats } from '../operations/applyweftmaterials/applyweftmaterials';
+import {bitfield} from '../operations/bitfield/bitfield';
 
 @Injectable({
   providedIn: 'root'
@@ -172,6 +173,7 @@ export class OperationService {
     this.ops.push(sawtooth);
     this.ops.push(glitchsatin)
     // this.ops.push(hydra)
+    this.ops.push(bitfield);
     }
 
 
