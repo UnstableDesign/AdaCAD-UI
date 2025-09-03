@@ -6,9 +6,7 @@ import { Bounds, ZoomProxy } from '../model/datatypes';
   providedIn: 'root'
 })
 export class ZoomService {
-  //current zoom scale
   
-
   num_steps: number = 30;
   zoom_min: number = .015;
   zoom_step: number = .002;
@@ -21,11 +19,12 @@ export class ZoomService {
 
   constructor() { 
 
-
     for(let i = 0; i < this.num_steps; i++){
       const raw = this.zoom_min + this.zoom_step*(i*i);
       this.zoom_table.push(this.manageZoomRounding(raw));
     }
+
+    this.updateFontSizes();
   }
 
   /**
@@ -45,6 +44,7 @@ export class ZoomService {
 
    this.setEditorIndexFromZoomValue(zp.editor);
    this.setMixerIndexFromZoomValue(zp.mixer);
+   this.updateFontSizes();
 
   }
 
@@ -64,12 +64,10 @@ export class ZoomService {
    * @param viewable (the size of the current view portal) 
    */
   zoomToFitMixer(bounds: Bounds, viewable: {width: number, height: number}){
-
     const w_factor = viewable.width / bounds.width;
     const h_factor = viewable.height / bounds.height;
     const smaller = Math.min(w_factor, h_factor)
     this.setMixerIndexFromZoomValue(smaller);
-
 
   }
 
@@ -81,12 +79,30 @@ export class ZoomService {
 
   }
 
+  /**
+   * the font size needs to scale at a different ratio than the viewer because 
+   * even when elements are drawing small, the text shoul dbe somewhat readable. 
+   */
+  updateFontSizes(){
+      const root = document.documentElement; // Select the root element
+      
+      //higher index, more zoom in, text should be smaller
+      let offset = this.zoom_table.length - this.zoom_table_ndx_mixer;
+      let fs = 16 + offset * 2;
+      root.style.setProperty('--operation-font-size', fs+'px');
+          console.log("Updated font", this.zoom_table_ndx_mixer, fs)
+
+  }
+
 
   zoomInMixer(){
       this.zoom_table_ndx_mixer++;
       if(this.zoom_table_ndx_mixer >= this.zoom_table.length){
         this.zoom_table_ndx_mixer = this.zoom_table.length;
       }
+
+      this.updateFontSizes();
+     
     }
 
   zoomInEditor(){
@@ -110,6 +126,8 @@ export class ZoomService {
     if(this.zoom_table_ndx_mixer < 0){
       this.zoom_table_ndx_mixer = 0;
     }
+
+      this.updateFontSizes();
   }
 
   zoomOutEditor(){
@@ -155,6 +173,8 @@ export class ZoomService {
     }, {min: 1000000, ndx: 0})
 
     this.zoom_table_ndx_mixer=  closest.ndx;
+    this.updateFontSizes();
+
     // console.log("SET TO ", this.zoom_table_ndx_mixer, this.zoom_table[this.zoom_table_ndx_mixer])
 
   }
@@ -167,6 +187,8 @@ export class ZoomService {
   setZoomIndexOnEditor(ndx: number){
     if(ndx >= 0 && ndx < this.zoom_table.length)
     this.zoom_table_ndx_editor = ndx;
+    this.updateFontSizes();
+
   }
 
   setZoomIndexOnViewer(ndx: number){

@@ -46,10 +46,10 @@
   }
 
 
-  .mat-mdc-form-field-hint,
-  .mat-mdc-form-field-subscript-wrapper{
-    font-size: 14px;
-  }
+//   .mat-mdc-form-field-hint,
+//   .mat-mdc-form-field-subscript-wrapper{
+//     font-size: 14px;
+//   }
 
 .top-row{
     display: flex;
@@ -57,6 +57,8 @@
     vertical-align: bottom;
     justify-content: flex-start;
     padding: 8px 8px 0px 8px;
+    font-size: var(--operation-font-size, 20px);
+    line-height: var(--operation-font-size, 20px);
     
 }
 
@@ -195,8 +197,8 @@ button.is-primary.is-active{
 
 .name{
     color: white;
-    font-size: 1.6em;
     font-weight: bold;
+    margin: 4px;
 }
 
 .hidden{
