@@ -4,8 +4,8 @@ import { get as fbget, getDatabase, onChildAdded, onChildRemoved, onDisconnect, 
 import { Observable, Subject } from 'rxjs';
 import { FilebrowserComponent } from '../ui/filebrowser/filebrowser.component';
 import { SaveObj, ShareObj } from '../model/datatypes';
-import utilInstance from '../model/util';
 import { Database } from '@angular/fire/database';
+import { generateId } from 'adacad-drafting-lib';
 
 
 
@@ -320,7 +320,7 @@ export class FilesystemService {
 
 
   generateFileId() : number{
-    return utilInstance.generateId(8);
+    return generateId(8);
   }
 
   /**

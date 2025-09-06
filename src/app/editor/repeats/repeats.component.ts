@@ -8,7 +8,7 @@ import { MatAutocompleteSelectedEvent, MatAutocomplete, MatAutocompleteTrigger, 
 import { MatChipInputEvent, MatChipGrid, MatChipRow, MatChipRemove, MatChipInput } from '@angular/material/chips';
 import { MaterialsService } from '../../core/provider/materials.service';
 import { SystemsService } from '../../core/provider/systems.service';
-import { System } from '../../core/model/datatypes';
+import { System } from 'adacad-drafting-lib';
 import { defaults } from '../../core/model/defaults';
 import { MatIconButton, MatMiniFabButton } from '@angular/material/button';
 import { CdkDrag, CdkDragHandle } from '@angular/cdk/drag-drop';

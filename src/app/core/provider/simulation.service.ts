@@ -2,12 +2,9 @@ import { Injectable, inject } from '@angular/core';
 import * as THREE from 'three';
 import { createLayerMaps, getDraftTopology, translateTopologyToPoints } from '../model/yarnsimulation';
 import { MaterialsService } from '../provider/materials.service';
-import { Bounds, Draft, Interlacement, SimulationData, SimulationVars, YarnVertex } from '../model/datatypes';
-import { initDraftFromDrawdown, warps, wefts } from '../model/drafts';
-import { getCellValue } from '../model/cell';
-import { Sequence } from '../model/sequence';
-import { from } from 'rxjs';
-import utilInstance from '../model/util';
+import { Bounds, SimulationData, SimulationVars, YarnVertex } from '../model/datatypes';
+import { Draft, initDraftFromDrawdown, warps, wefts, getCellValue } from 'adacad-drafting-lib';
+import { Sequence } from 'adacad-drafting-lib/objects';
 import { defaults } from '../model/defaults';
 
 @Injectable({

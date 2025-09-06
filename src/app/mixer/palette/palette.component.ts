@@ -2,9 +2,8 @@ import { Component, ComponentFactoryResolver, EventEmitter, HostListener, OnInit
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { fromEvent, Subscription } from 'rxjs';
 import { defaults } from '../../core/model/defaults';
-import { Bounds, Draft, DraftNode, DraftNodeProxy, Interlacement, NodeComponentProxy, Note, Node, Point, Cell, OpNode, Operation, LoomSettings, Loom} from '../../core/model/datatypes';
-import { copyDraft, getDraftName, initDraftWithParams, warps, wefts } from '../../core/model/drafts';
-import utilInstance from '../../core/model/util';
+import { Bounds, DraftNode, DraftNodeProxy, NodeComponentProxy, Note, Node, Point, OpNode} from '../../core/model/datatypes';
+import { copyDraft, Draft, generateId, getDraftName, initDraftWithParams, Interlacement, Loom, LoomSettings, Operation, warps, wefts } from 'adacad-drafting-lib';
 import { DesignmodesService } from '../../core/provider/designmodes.service';
 import { NotesService } from '../../core/provider/notes.service';
 import { StateService } from '../../core/provider/state.service';
@@ -20,9 +19,9 @@ import { OperationComponent } from './operation/operation.component';
 import { SnackbarComponent } from './snackbar/snackbar.component';
 import { SubdraftComponent } from './subdraft/subdraft.component';
 import { ViewerService } from '../../core/provider/viewer.service';
-import { copyLoom, copyLoomSettings, getLoomUtilByType } from '../../core/model/looms';
 import { OperationService } from '../../core/provider/operation.service';
 import { MediaService } from '../../core/provider/media.service';
+import { copyLoom, copyLoomSettings, getLoomUtilByType } from 'adacad-drafting-lib/objects';
 
 @Component({
     selector: 'app-palette',
@@ -836,7 +835,7 @@ handlePan(diff: Point){
     let d = copyDraft(draftnode.draft);
     let l = copyLoom(draftnode.loom);
     let ls = copyLoomSettings(draftnode.loom_settings);
-    d.id = utilInstance.generateId(8);
+    d.id =   generateId(8);
 
 
     return this.createSubDraft(d, l, ls).then(sd => {

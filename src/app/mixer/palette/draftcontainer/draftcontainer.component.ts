@@ -1,7 +1,6 @@
 import { AfterViewInit, Component, EventEmitter, Input, Output, SimpleChanges, ViewChild, inject } from '@angular/core';
-import { Draft, DraftNode } from '../../../core/model/datatypes';
-import { getDraftName, initDraft, warps, wefts } from '../../../core/model/drafts';
-import utilInstance from '../../../core/model/util';
+import { DraftNode } from '../../../core/model/datatypes';
+import { Draft, getDraftName, warps, wefts } from 'adacad-drafting-lib';
 import { DesignmodesService } from '../../../core/provider/designmodes.service';
 import { FileService } from '../../../core/provider/file.service';
 import { MaterialsService } from '../../../core/provider/materials.service';
@@ -13,10 +12,11 @@ import { DraftRenderingComponent } from '../../../core/ui/draft-rendering/draft-
 import { ViewerService } from '../../../core/provider/viewer.service';
 import { MatMenuTrigger, MatMenu, MatMenuItem } from '@angular/material/menu';
 import { MatDialog } from '@angular/material/dialog';
-import { RenameComponent } from '../../../core/modal/rename/rename.component';
+import { RenameComponent } from '../../../core/ui/rename/rename.component';
 import { MatButton, MatIconButton } from '@angular/material/button';
 import { MatSlider, MatSliderThumb } from '@angular/material/slider';
 import { MatTooltip } from '@angular/material/tooltip';
+import { saveAsBmp, saveAsPrint, saveAsWif } from '../../../core/helpers';
 
 @Component({
     selector: 'app-draftcontainer',
@@ -303,7 +303,7 @@ export class DraftContainerComponent implements AfterViewInit{
     let draft = this.tree.getDraft(this.id);
     let loom = this.tree.getLoom(this.id);
     let loom_settings = this.tree.getLoomSettings(this.id);
-    utilInstance.saveAsWif(this.fs, draft, loom, loom_settings)
+    saveAsWif(this.fs, draft, loom, loom_settings)
 
   
   }
@@ -314,7 +314,7 @@ export class DraftContainerComponent implements AfterViewInit{
     let floats = (this.current_view == 'draft') ? false : true;
     let color = (this.current_view == 'visual') ? true : false;
 
-    utilInstance.saveAsPrint(
+    saveAsPrint(
       this.bitmap.nativeElement,
       draft,
       color,
@@ -341,7 +341,7 @@ export class DraftContainerComponent implements AfterViewInit{
       let b = this.bitmap.nativeElement;
       let draft = this.tree.getDraft(this.id);
 
-      utilInstance.saveAsBmp(b, draft, this.ws.selected_origin_option, this.ms, this.fs)
+      saveAsBmp(b, draft, this.ws.selected_origin_option, this.ms, this.fs)
         
     }
 

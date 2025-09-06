@@ -1,7 +1,6 @@
 import { Component, EventEmitter, HostListener, Input, OnInit, Output, inject } from '@angular/core';
 import { fromEvent, Subscription } from 'rxjs';
 import { Bounds, Point, Note } from '../../../core/model/datatypes';
-import utilInstance from '../../../core/model/util';
 import { NotesService } from '../../../core/provider/notes.service';
 import { ViewportService } from '../../provider/viewport.service';
 import { ZoomService } from '../../../core/provider/zoom.service';

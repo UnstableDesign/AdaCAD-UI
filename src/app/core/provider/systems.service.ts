@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
-import { Draft, System } from '../model/datatypes';
-import { createSystem } from '../model/system';
+import { Draft, System } from 'adacad-drafting-lib/objects/datatypes.ts';
+import { createSystem } from 'adacad-drafting-lib/objects';
 
 @Injectable({
   providedIn: 'root'
@@ -18,12 +18,12 @@ export class SystemsService {
   constructor() { 
 
     for(let i = 0; i < 26; i++){
-      const weft = createSystem();
+      const weft = createSystem({});
       weft.id = i; 
       weft.name = String.fromCharCode(i+97);
       this.weft_systems.push(weft);
 
-      const warp = createSystem();
+      const warp = createSystem({});
       warp.id = i; 
       warp.name = ""+(i+1);
       this.warp_systems.push(warp);

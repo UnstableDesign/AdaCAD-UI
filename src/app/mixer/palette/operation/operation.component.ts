@@ -1,13 +1,11 @@
-import { Component, EventEmitter, HostListener, Input, OnInit, Output, QueryList, ViewChild, ViewChildren, inject } from '@angular/core';
+import { Component, EventEmitter, Input, OnInit, Output, QueryList, ViewChild, ViewChildren, inject } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
-import { Draft, DynamicOperation, Interlacement, IOTuple, Operation, OpNode, Point } from '../../../core/model/datatypes';
-import { MediaService } from '../../../core/provider/media.service';
+import { IOTuple, OpNode, Point } from '../../../core/model/datatypes';
 import { OperationDescriptionsService } from '../../../core/provider/operation-descriptions.service';
 import { OperationService } from '../../../core/provider/operation.service';
 import { SystemsService } from '../../../core/provider/systems.service';
 import { TreeService } from '../../../core/provider/tree.service';
 import { MultiselectService } from '../../provider/multiselect.service';
-import { ViewportService } from '../../provider/viewport.service';
 import { InletComponent } from './inlet/inlet.component';
 import { ParameterComponent } from './parameter/parameter.component';
 import { ZoomService } from '../../../core/provider/zoom.service';
@@ -18,6 +16,7 @@ import { MatMenuTrigger, MatMenu, MatMenuItem } from '@angular/material/menu';
 import { ConnectionComponent } from '../connection/connection.component';
 import { MatTooltip } from '@angular/material/tooltip';
 import { MatIconButton } from '@angular/material/button';
+import { Interlacement, Operation, DynamicOperation } from 'adacad-drafting-lib';
 
 
 

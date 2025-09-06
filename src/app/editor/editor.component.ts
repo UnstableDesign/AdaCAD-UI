@@ -2,12 +2,10 @@ import { Component, EventEmitter, Input, OnInit, Output, ViewChild, inject } fro
 
 import { ScrollDispatcher } from '@angular/cdk/overlay';
 import { MatDialog, MatDialogRef } from "@angular/material/dialog";
-import { MaterialModal } from '../core/modal/material/material.modal';
-import { createCell } from '../core/model/cell';
-import { DesignMode, Drawdown, LoomSettings, OpNode } from '../core/model/datatypes';
+import { MaterialModal } from '../core/ui/material/material.modal';
+import { createCell, Drawdown, LoomSettings } from 'adacad-drafting-lib';
 import { defaults, draft_pencil } from '../core/model/defaults';
-import { createBlankDrawdown, createDraft, getDraftName } from '../core/model/drafts';
-import { getLoomUtilByType, isFrame } from '../core/model/looms';
+import { getDraftName } from 'adacad-drafting-lib';
 import { DesignmodesService } from '../core/provider/designmodes.service';
 import { FileService } from '../core/provider/file.service';
 import { MaterialsService } from '../core/provider/materials.service';
@@ -27,6 +25,8 @@ import { MatTooltip } from '@angular/material/tooltip';
 import { MatLabel } from '@angular/material/form-field';
 import { MatButtonToggleGroup, MatButtonToggle } from '@angular/material/button-toggle';
 import { FormsModule } from '@angular/forms';
+import { getLoomUtilByType, isFrame } from 'adacad-drafting-lib/objects';
+import { OpNode } from '../core/model/datatypes';
 
 
 

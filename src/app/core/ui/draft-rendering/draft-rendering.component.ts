@@ -1,9 +1,7 @@
 import { Component, EventEmitter, HostListener, Input, OnInit, Output, SimpleChanges, ViewChild, inject } from '@angular/core';
 import { Subject, Subscription, fromEvent } from 'rxjs';
-import { CanvasList, Cell, Draft, Interlacement, Loom, LoomSettings, RenderingFlags } from '../../model/datatypes';
 import { defaults } from '../../model/defaults';
-import { deleteDrawdownCol, deleteDrawdownRow, deleteMappingCol, deleteMappingRow, generateMappingFromPattern, hasCell, insertDrawdownCol, insertDrawdownRow, insertMappingCol, insertMappingRow, isUp, setHeddle, warps, wefts } from '../../model/drafts';
-import { getLoomUtilByType, isFrame, isInUserThreadingRange, isInUserTieupRange, isInUserTreadlingRange, numFrames, numTreadles } from '../../model/looms';
+import { Cell, deleteDrawdownCol, deleteDrawdownRow, deleteMappingCol, deleteMappingRow, Draft, generateMappingFromPattern, hasCell, insertDrawdownCol, insertDrawdownRow, insertMappingCol, insertMappingRow, Interlacement, isUp, Loom, LoomSettings, RenderingFlags, setHeddle, warps, wefts } from 'adacad-drafting-lib';
 import { DesignmodesService } from '../../provider/designmodes.service';
 import { FileService } from '../../provider/file.service';
 import { MaterialsService } from '../../provider/materials.service';
@@ -16,6 +14,8 @@ import { WorkspaceService } from '../../provider/workspace.service';
 import { ZoomService } from '../../provider/zoom.service';
 import { SelectionComponent } from './selection/selection.component';
 import { ViewerService } from '../../provider/viewer.service';
+import { CanvasList } from '../../model/datatypes';
+import { numFrames, numTreadles, isFrame, isInUserTieupRange, getLoomUtilByType, isInUserThreadingRange, isInUserTreadlingRange } from 'adacad-drafting-lib/objects';
 
 @Component({
     selector: 'app-draft-rendering',

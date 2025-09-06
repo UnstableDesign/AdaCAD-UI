@@ -1,19 +1,18 @@
 import { Component, EventEmitter, Input, OnInit, Output, inject } from '@angular/core';
 import { TreeService } from '../../../provider/tree.service';
-import { Drawdown, Interlacement, OpInput, OpParamVal, Operation, OperationParam } from '../../../model/datatypes';
-import { getLoomUtilByType, numFrames, numTreadles } from '../../../model/looms';
 import { DesignmodesService } from '../../../provider/designmodes.service';
 import { RenderService } from '../../../provider/render.service';
 import { defaults, paste_options } from '../../../model/defaults';
 import { ZoomService } from '../../../provider/zoom.service';
-import { createBlankDrawdown, generateMappingFromPattern, initDraftFromDrawdown, initDraftWithParams, isUp, pasteIntoDrawdown, warps, wefts } from '../../../model/drafts';
-import { createCell, getCellValue, setCellValue } from '../../../model/cell';
+import { createBlankDrawdown, Drawdown, generateMappingFromPattern, initDraftWithParams, Interlacement, isUp, Operation, OpInput, OpParamVal, pasteIntoDrawdown, warps, wefts } from 'adacad-drafting-lib';
+import { createCell, getCellValue, setCellValue } from 'adacad-drafting-lib';
 import { MaterialsService } from '../../../provider/materials.service';
 import { SystemsService } from '../../../provider/systems.service';
 import { OperationService } from '../../../provider/operation.service';
 import { MatFabButton } from '@angular/material/button';
 import { MatTooltip } from '@angular/material/tooltip';
 import { MatMenuTrigger, MatMenu, MatMenuItem } from '@angular/material/menu';
+import { getLoomUtilByType, numTreadles, numFrames } from 'adacad-drafting-lib/objects';
 
 @Component({
     selector: 'app-selection',
@@ -308,7 +307,7 @@ export class SelectionComponent implements OnInit {
             drafts = [{
               drafts: [copy_draft],
               inlet_id: 0,
-              params: []
+              inlet_params: []
             }];
             break;
           case 'invert':
@@ -317,7 +316,7 @@ export class SelectionComponent implements OnInit {
             drafts = [{
               drafts: [copy_draft],
               inlet_id: 0,
-              params: []
+              inlet_params: []
             }]
 
           break;
@@ -334,7 +333,7 @@ export class SelectionComponent implements OnInit {
             drafts = [{
               drafts: [copy_draft],
               inlet_id: 0,
-              params: []
+              inlet_params: []
             }]
             break;
             case 'flip_y':
@@ -350,7 +349,7 @@ export class SelectionComponent implements OnInit {
               drafts = [{
                 drafts: [copy_draft],
                 inlet_id: 0,
-                params: []
+                inlet_params: []
               }]
               break;
          
@@ -367,7 +366,7 @@ export class SelectionComponent implements OnInit {
             drafts = [{
               drafts: [copy_draft],
               inlet_id: 0,
-              params: []
+              inlet_params: []
             }]
             break;
             case 'shift_up':
@@ -383,7 +382,7 @@ export class SelectionComponent implements OnInit {
             drafts = [{
               drafts: [copy_draft],
               inlet_id: 0,
-              params: []
+              inlet_params: []
             }]
             break;
         }

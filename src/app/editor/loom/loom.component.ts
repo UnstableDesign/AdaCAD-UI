@@ -2,15 +2,15 @@ import { Component, EventEmitter, Input, Output, SimpleChanges, inject } from '@
 import { NgForm, FormsModule } from '@angular/forms';
 import { DesignmodesService } from '../../core/provider/designmodes.service';
 import { defaults, density_units, loom_types } from '../../core/model/defaults';
-import { deleteDrawdownCol, deleteDrawdownRow, deleteMappingCol, deleteMappingRow, insertDrawdownCol, insertDrawdownRow, insertMappingCol, insertMappingRow, warps, wefts } from '../../core/model/drafts';
+import { deleteDrawdownCol, deleteDrawdownRow, deleteMappingCol, deleteMappingRow, insertDrawdownCol, insertDrawdownRow, insertMappingCol, insertMappingRow, warps, wefts } from 'adacad-drafting-lib';
 import { TreeService } from '../../core/provider/tree.service';
-import { LoomSettings, LoomUtil } from '../../core/model/datatypes';
-import { convertLiftPlanToTieup, convertLoom, convertTieupToLiftPlan, copyLoomSettings, generateDirectTieup, getLoomUtilByType, isFrame, numFrames, numTreadles } from '../../core/model/looms';
+import { LoomSettings } from 'adacad-drafting-lib';
 import { WorkspaceService } from '../../core/provider/workspace.service';
 import { MatFormField, MatLabel, MatSuffix } from '@angular/material/form-field';
 import { MatSelect } from '@angular/material/select';
 import { MatOption } from '@angular/material/autocomplete';
 import { MatInput } from '@angular/material/input';
+import { convertLoom, copyLoomSettings, generateDirectTieup, getLoomUtilByType, numFrames, numTreadles } from 'adacad-drafting-lib/objects';
 
 @Component({
     selector: 'app-loom',

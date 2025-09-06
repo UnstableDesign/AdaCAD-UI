@@ -1,9 +1,7 @@
-
+import { Cell, getCellValue, Drawdown, wefts, warps, Draft, YarnVertex, WarpRange, TopologyVtx, LayerMaps, Deflection, YarnFloat, VertexMaps } from "adacad-drafting-lib";
+import { SimulationVars } from "./datatypes";
 import { MaterialsService } from "../provider/materials.service";
-import { getCellValue } from "./cell";
-import { Cell, Deflection, Draft, Drawdown, LayerMaps, SimulationVars, TopologyVtx, VertexMaps, WarpInterlacementTuple, WarpRange, WeftInterlacementTuple, YarnFloat, YarnVertex } from "./datatypes";
-import { warps, wefts } from "./drafts";
-
+import { WarpInterlacementTuple, WeftInterlacementTuple } from "./datatypes";
 
 
   
@@ -1930,6 +1928,3 @@ export const getClosestWarpValue = (i: number, j: number, warp_vtx: Array<Array<
 
 
   
-
-
-

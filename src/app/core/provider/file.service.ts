@@ -1,27 +1,16 @@
-import { Injectable, inject } from '@angular/core';
-import { Cell, Draft, DraftNodeProxy, Fileloader, FileObj, FileSaver, LoadResponse, Loom, LoomSettings, Material, OpComponentProxy, SaveObj, StatusMessage } from '../model/datatypes';
-import { compressDraft, exportDrawdownToArray, initDraftWithParams, loadDraftFromFile, warps, wefts } from '../model/drafts';
-import { getLoomUtilByType, loadLoomFromFile, numFrames, numTreadles } from '../model/looms';
-import utilInstance from '../model/util';
-import { FilesystemService } from './filesystem.service';
-import { MaterialsService } from './materials.service';
-import { NotesService } from './notes.service';
-import { SystemsService } from './systems.service';
-import { TreeService } from './tree.service';
-import { VersionService } from './version.service';
-import { WorkspaceService } from './workspace.service';
-import { ZoomService } from './zoom.service';
-import { MediaService } from './media.service';
-
-
-
-
-/**
- * this service handles the processing of data from an uplaoded file. 
- * It is called from the InitModal when the user uploads data. 
- * The principle sholud be that you can load any .ada file into 
- * mixer or weaver, no matter what. 
- */
+import { Injectable, inject } from "@angular/core";
+import { StatusMessage, DraftNodeProxy, OpComponentProxy, sameOrNewerVersion, Draft, Loom, LoomSettings, getLoomUtilByType, Material, numFrames, numTreadles, warps, wefts } from "adacad-drafting-lib";
+import { loadDraftFromFile, loadLoomFromFile } from "../helpers";
+import { Fileloader, FileSaver, LoadResponse, FileObj, SaveObj } from "../model/datatypes";
+import { FilesystemService } from "./filesystem.service";
+import { MaterialsService } from "./materials.service";
+import { MediaService } from "./media.service";
+import { NotesService } from "./notes.service";
+import { SystemsService } from "./systems.service";
+import { TreeService } from "./tree.service";
+import { VersionService } from "./version.service";
+import { WorkspaceService } from "./workspace.service";
+import { ZoomService } from "./zoom.service";
 
 @Injectable({
   providedIn: 'root'
@@ -105,13 +94,13 @@ export class FileService {
       const draft_elements = [];
       const draft_fns = [];
 
-      if(!utilInstance.sameOrNewerVersion(version, '3.4.9')){
+      if(!sameOrNewerVersion(version, '3.4.9')){
         data.nodes.forEach(node => {
           if(node.bounds !== undefined) node.topleft = node.bounds.topleft;
         })
       }
 
-      if(utilInstance.sameOrNewerVersion(version, '3.4.5')){
+      if(sameOrNewerVersion(version, '3.4.5')){
     
         draft_nodes = data.draft_nodes;
 

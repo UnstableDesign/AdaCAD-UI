@@ -1,19 +1,16 @@
 import { Injectable, ViewRef, inject } from '@angular/core';
-import { boolean } from 'mathjs';
-import { BoolParam, Bounds, Draft, DraftNode, DraftNodeProxy, Drawdown, DynamicOperation, IndexedColorImageInstance, IOTuple, Loom, LoomSettings, Node, NodeComponentProxy, NotationTypeParam, OpComponentProxy, Operation, OpInput, OpNode, OpParamVal, Point, StringParam, TreeNode, TreeNodeProxy } from '../../core/model/datatypes';
-import { compressDraft, copyDraft, createDraft, exportDrawdownToArray, getDraftName, initDraft, initDraftWithParams, warps, wefts } from '../../core/model/drafts';
-import { copyLoom, flipLoom, getLoomUtilByType } from '../../core/model/looms';
-import utilInstance from '../../core/model/util';
 import { SystemsService } from '../../core/provider/systems.service';
 import { WorkspaceService } from '../../core/provider/workspace.service';
 import { ConnectionComponent } from '../../mixer/palette/connection/connection.component';
 import { OperationComponent } from '../../mixer/palette/operation/operation.component';
 import { SubdraftComponent } from '../../mixer/palette/subdraft/subdraft.component';
-import { createCell } from '../model/cell';
-import { defaults } from '../model/defaults';
 import { MediaService } from './media.service';
 import { OperationService } from './operation.service';
-
+import {  compressDraft, copyDraft, createDraft, Draft, DraftNodeProxy, Drawdown, DynamicOperation, getDraftName, IndexedColorImageInstance, initDraft, Loom, LoomSettings, OpComponentProxy, Operation, OpInput, OpParamVal, warps, wefts } from 'adacad-drafting-lib';
+import { generateId } from 'adacad-drafting-lib';
+import { Point } from '@angular/cdk/drag-drop';
+import { getLoomUtilByType, copyLoom } from 'adacad-drafting-lib/objects';
+import { Node, TreeNode, OpNode, DraftNode, IOTuple, Bounds, NodeComponentProxy, TreeNodeProxy } from '../model/datatypes';
 
 /**
  * this class registers the relationships between subdrafts, operations, and connections
@@ -40,7 +37,7 @@ export class TreeService {
    */
   getUniqueId() : number {
     
-    return utilInstance.generateId(8);
+    return generateId(8);
 
 
   }
@@ -1278,7 +1275,7 @@ clearDraft(dn: DraftNode){
      const ids = drafts_loaded.map(el => el.entry.cur_id);
      ids.forEach((id, ndx) => {
       let d = this.getDraft(id);
-       d.gen_name = op.generateName(param_vals, inputs, ndx);
+       d.gen_name = op.generateName(param_vals, inputs);
      })
 
 
@@ -1413,7 +1410,7 @@ isValidIOTuple(io: IOTuple) : boolean {
 
 
     const paraminputs = draft_id_to_ndx.map(el => {
-      return {drafts: [el.draft], inlet_id: el.ndx, params: [opnode.inlets[el.ndx]]}
+      return {drafts: [el.draft], inlet_id: el.ndx, inlet_params: [opnode.inlets[el.ndx]]}
     })
     const cleaned_inputs: Array<OpInput> = paraminputs.filter(el => el !== undefined);
 
@@ -2428,7 +2425,4 @@ isValidIOTuple(io: IOTuple) : boolean {
   
     // }
 
-
-
- 
 }

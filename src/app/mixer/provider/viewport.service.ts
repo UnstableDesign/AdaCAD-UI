@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Subject } from 'rxjs';
-import { Bounds, Interlacement, Point } from '../../core/model/datatypes';
+import { Bounds, Point } from '../../core/model/datatypes';
+import { Interlacement } from 'adacad-drafting-lib/objects/datatypes.js';
 
 
 

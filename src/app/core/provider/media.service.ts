@@ -1,8 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import { AnalyzedImage, Color, IndexedColorImageInstance, IndexedColorMediaProxy, MediaInstance, SingleImage } from '../model/datatypes';
+import { IndexedColorImageInstance, IndexedColorMediaProxy, MediaInstance } from '../model/datatypes';
 import { UploadService } from './upload.service';
 import { HttpClient } from '@angular/common/http';
-import utilInstance from '../model/util';
+import { AnalyzedImage, Color, filterToUniqueValues, generateId, SingleImage } from 'adacad-drafting-lib';
 
 
 /**
@@ -71,7 +71,7 @@ export class MediaService {
     //console.log("LOAD INDEXED COLOR FILE")
 
     if(id == -1){
-      id = utilInstance.generateId(8);
+      id = generateId(8);
     }
 
     let color_mapping = [];
@@ -157,7 +157,7 @@ export class MediaService {
         /**this is expensive, so just do a fast run to make sure the size is okay before we go into this */
         
         if(colors.length == 0){
-         colors = utilInstance.filterToUniqueValues(seen_vals);
+         colors = filterToUniqueValues(seen_vals);
         }
   
  
@@ -222,7 +222,7 @@ export class MediaService {
   loadImage(id: number, ref: string) : Promise<MediaInstance>{
 
     if(id == -1){
-      id = utilInstance.generateId(8);
+      id = generateId(8);
     }
 
     let url = "";
@@ -392,7 +392,7 @@ export class MediaService {
 
     let image_copy:AnalyzedImage = this.copyIndexedImage(i.img);
 
-    return this.addIndexColorMediaInstance(utilInstance.generateId(8), i.ref, image_copy);
+    return this.addIndexColorMediaInstance(generateId(8), i.ref, image_copy);
 
   }
 

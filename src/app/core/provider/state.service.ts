@@ -1,8 +1,9 @@
 import { Injectable, inject } from '@angular/core';
 import { getAuth } from '@angular/fire/auth';
 import { Observable } from 'rxjs';
-import { Draft, SaveObj } from '../model/datatypes';
+import { SaveObj } from '../model/datatypes';
 import { FilesystemService } from './filesystem.service';
+import { Draft } from 'adacad-drafting-lib/objects/datatypes.ts';
 /**
  * stores a state within the undo/redo timeline
  * weaver uses draft, mixer uses ada

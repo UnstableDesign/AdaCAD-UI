@@ -1,6 +1,6 @@
 import { Component, Input, ViewChild, SimpleChanges, Output, EventEmitter, inject } from '@angular/core';
-import { CanvasList, Draft, DraftNode, RenderingFlags } from '../core/model/datatypes';
-import { createDraft, getDraftAsImage, getDraftName, initDraft, warps, wefts } from '../core/model/drafts';
+import { createDraft, getDraftAsImage, Draft, getDraftName, warps, wefts } from 'adacad-drafting-lib';
+import { initDraft } from 'adacad-drafting-lib';
 import { FilesystemService } from '../core/provider/filesystem.service';
 import { MaterialsService } from '../core/provider/materials.service';
 import { TreeService } from '../core/provider/tree.service';

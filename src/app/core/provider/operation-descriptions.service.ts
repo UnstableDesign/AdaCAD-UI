@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import descriptions from '../../../assets/json/op_descriptions.json';
 import classifications from '../../../assets/json/op_classifications.json';
-import { OperationClassification } from '../model/datatypes';
+import { OperationClassification } from 'adacad-drafting-lib';
 
 @Injectable({
   providedIn: 'root'

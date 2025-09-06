@@ -1,7 +1,7 @@
 import { Component, EventEmitter, Input, OnInit, Output, inject } from '@angular/core';
 import { UntypedFormControl, FormsModule } from '@angular/forms';
-import { DynamicOperation, OperationInlet, OpNode } from '../../../../core/model/datatypes';
-import { getDraftName } from '../../../../core/model/drafts';
+import { OpNode } from '../../../../core/model/datatypes';
+import { DynamicOperation, getDraftName, OperationInlet } from 'adacad-drafting-lib';
 import { OperationService } from '../../../../core/provider/operation.service';
 import { SystemsService } from '../../../../core/provider/systems.service';
 import { TreeService } from '../../../../core/provider/tree.service';

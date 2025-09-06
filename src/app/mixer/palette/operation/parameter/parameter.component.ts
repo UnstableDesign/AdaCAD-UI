@@ -1,25 +1,23 @@
 import { Component, EventEmitter, Input, OnInit, Output, ViewChild, ViewEncapsulation, inject } from '@angular/core';
-import { AbstractControl, FormControl, UntypedFormControl, ValidationErrors, ValidatorFn, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { MAT_FORM_FIELD_DEFAULT_OPTIONS, MatFormField, MatLabel, MatError, MatHint } from '@angular/material/form-field';
-import { AnalyzedImage, BoolParam, CodeParam, FileParam, IndexedColorImageInstance, MediaInstance, NotationTypeParam, NumParam, OpNode, SelectParam, StringParam } from '../../../../core/model/datatypes';
+import { AbstractControl, UntypedFormControl, ValidationErrors, ValidatorFn, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { MatFormField, MatLabel, MatError, MatHint } from '@angular/material/form-field';
+import { IndexedColorImageInstance,  OpNode} from '../../../../core/model/datatypes';
 import { OperationDescriptionsService } from '../../../../core/provider/operation-descriptions.service';
 import { OperationService } from '../../../../core/provider/operation.service';
 import { TreeService } from '../../../../core/provider/tree.service';
 import { MediaService } from '../../../../core/provider/media.service';
-import { map, startWith } from 'rxjs/operators';
 import { CdkTextareaAutosize } from '@angular/cdk/text-field';
-import {NgZone} from '@angular/core';
-import {take} from 'rxjs/operators';
-import { ImageeditorComponent } from '../../../../core/modal/imageeditor/imageeditor.component';
+import { NgZone } from '@angular/core';
+import { take } from 'rxjs/operators';
+import { ImageeditorComponent } from '../../../../core/ui/imageeditor/imageeditor.component';
 import { MatDialog } from '@angular/material/dialog';
-import { Index } from '@angular/fire/firestore';
-import { update } from '@angular/fire/database';
 import { MatInput } from '@angular/material/input';
 import { MatSelect } from '@angular/material/select';
 import { MatOption } from '@angular/material/autocomplete';
 import { MatTooltip } from '@angular/material/tooltip';
 import { MatMiniFabButton, MatButton } from '@angular/material/button';
 import { UploadFormComponent } from '../../../../core/ui/uploads/upload-form/upload-form.component';
+import { AnalyzedImage, BoolParam, CodeParam, FileParam, NotationTypeParam, NumParam, SelectParam, StringParam } from 'adacad-drafting-lib/objects/datatypes.ts';
 
 
 export function regexValidator(nameRe: RegExp): ValidatorFn {

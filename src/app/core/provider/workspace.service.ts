@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { defaults } from '../model/defaults';
-import { LoomSettings } from '../model/datatypes';
+import { LoomSettings } from 'adacad-drafting-lib/objects/datatypes.ts';
 
 @Injectable({
   providedIn: 'root'

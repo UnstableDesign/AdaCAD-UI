@@ -3,10 +3,9 @@ import { Auth } from '@angular/fire/auth';
 import { FormControl, NgForm, UntypedFormControl, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { MatDialog } from '@angular/material/dialog';
 import { MatTooltipDefaultOptions, MAT_TOOLTIP_DEFAULT_OPTIONS, MatTooltip } from '@angular/material/tooltip';
-import { BlankdraftModal } from '../core/modal/blankdraft/blankdraft.modal';
-import { DesignMode, Draft, DraftNode, DraftNodeProxy, Loom, LoomSettings, NodeComponentProxy, Operation, Point } from '../core/model/datatypes';
+import { BlankdraftModal } from '../core/ui/blankdraft/blankdraft.modal';
+import { DraftNodeProxy,NodeComponentProxy, Point } from '../core/model/datatypes';
 import { defaults, loom_types } from '../core/model/defaults';
-import { getDraftName, warps, wefts } from '../core/model/drafts';
 import { DesignmodesService } from '../core/provider/designmodes.service';
 import { FileService } from '../core/provider/file.service';
 import { FilesystemService } from '../core/provider/filesystem.service';
@@ -29,6 +28,7 @@ import { MatFormField, MatLabel } from '@angular/material/form-field';
 import { MatInput } from '@angular/material/input';
 import { MatSlideToggle } from '@angular/material/slide-toggle';
 import { AsyncPipe } from '@angular/common';
+import { Draft, Loom, LoomSettings } from 'adacad-drafting-lib/objects/datatypes.ts';
 
 //disables some angular checking mechanisms
 enableProdMode();

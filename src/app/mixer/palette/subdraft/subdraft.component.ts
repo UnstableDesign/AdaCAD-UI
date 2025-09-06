@@ -1,6 +1,7 @@
 import { Component, EventEmitter, Input, OnInit, Output, SimpleChanges, ViewChild, ViewRef, inject } from '@angular/core';
-import { Draft, DraftNode, Interlacement, LoomSettings, Point } from '../../../core/model/datatypes';
-import { isUp, warps, wefts } from '../../../core/model/drafts';
+import { DraftNode, Point } from '../../../core/model/datatypes';
+import {Draft, Interlacement, LoomSettings } from 'adacad-drafting-lib'
+import { isUp, warps, wefts } from 'adacad-drafting-lib';
 import { DesignmodesService } from '../../../core/provider/designmodes.service';
 import { TreeService } from '../../../core/provider/tree.service';
 import { ViewerService } from '../../../core/provider/viewer.service';

@@ -1,6 +1,5 @@
 import { Injectable } from '@angular/core';
-import { Material } from '../model/datatypes';
-import { createMaterial, setMaterialID } from '../model/material';
+import { createMaterial, Material, setMaterialID } from 'adacad-drafting-lib';
 
 
 export interface MaterialMap{
