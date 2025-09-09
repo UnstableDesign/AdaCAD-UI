@@ -1,22 +1,27 @@
-import { Injectable, inject } from '@angular/core';
-import { Draft, getCellValue, initDraftFromDrawdown, warps, wefts } from 'adacad-drafting-lib';
-import { Sequence } from 'adacad-drafting-lib/sequence';
+import { Injectable } from '@angular/core';
+import { Draft, warps, wefts } from 'adacad-drafting-lib';
 import * as THREE from 'three';
-import { Bounds, SimulationData, SimulationVars, YarnVertex } from '../model/datatypes';
+import { Bounds, SimulationData, SimulationVars, WeftPath, YarnVertex } from '../model/datatypes';
 import { defaults } from '../model/defaults';
-import { createLayerMaps, getDraftTopology, translateTopologyToPoints } from '../model/yarnsimulation';
-import { MaterialsService } from '../provider/materials.service';
+import { applyForce, createParticle, createSpring, followTheWefts, getDraftTopology, getFlatVtxList, renderWarps, satisfyConstraint, updateParticleMesh, updateSpringMesh, verlet } from '../model/yarnsimulation';
 
 @Injectable({
   providedIn: 'root'
 })
 export class SimulationService {
-  private ms = inject(MaterialsService);
 
 
-  hasSimulation: boolean = false;
-  // currentSim: SimulationData  = null;
+  /**
+   * store one instance of the data for this sim and the variables controlling the rendering
+   */
 
+
+  renderer;
+  scene; camera;
+  controls;
+  gui;
+  particles;
+  springs;
   warp_layer_map_scene: any;
   weft_layer_map_scene: any;
   warp_scene: any;
@@ -24,6 +29,12 @@ export class SimulationService {
   axis_scene: any;
   topo_scene: any;
   draft_scene: any;
+
+
+  constructor() {
+    this.particles = [];
+    this.springs = [];
+  }
 
 
   /**
@@ -40,75 +51,7 @@ export class SimulationService {
       if (childMesh.material !== undefined) childMesh.material.dispose();
     });
 
-    this.hasSimulation = false;
   }
-
-  private tileDraft(draft: Draft, boundary: number): Promise<Draft> {
-    //extend to left and right top and bottom
-    let pattern = new Sequence.TwoD();
-    let weft_mats = new Sequence.OneD();
-    let weft_sys = new Sequence.OneD();
-    let warp_mats = new Sequence.OneD();
-    let warp_sys = new Sequence.OneD();
-
-    draft.drawdown.forEach((row, ndx) => {
-      let seq = new Sequence.OneD().import(row);
-      weft_mats.push(draft.rowShuttleMapping[ndx]);
-      weft_sys.push(draft.rowSystemMapping[ndx]);
-
-      if (ndx == 0) {
-        warp_mats.import(draft.colShuttleMapping);
-        warp_sys.import(draft.colSystemMapping)
-      }
-
-      //first, expand rows
-      for (let i = 0; i < boundary; i++) {
-
-        seq.push(getCellValue(row[i % row.length]));
-        let from_end = (i % row.length);
-        seq.unshift(getCellValue(row[(row.length - 1 - from_end)]))
-
-        if (ndx == 0) {
-
-          warp_mats.push(draft.colShuttleMapping[i % row.length]);
-          warp_mats.unshift(draft.colShuttleMapping[(row.length - 1 - from_end)])
-          warp_sys.push(draft.colSystemMapping[i % row.length]);
-          warp_sys.unshift(draft.colSystemMapping[(row.length - 1 - from_end)])
-
-        }
-
-      }
-      pattern.pushWeftSequence(seq.val());
-
-    })
-
-
-    let extended_pattern = new Sequence.TwoD().import(pattern.export());
-    for (let i = 0; i < boundary; i++) {
-      let offset = i % wefts(draft.drawdown);
-      let row = pattern.getWeft(i % wefts(draft.drawdown));
-      extended_pattern.pushWeftSequence(row);
-
-      let ending_row = pattern.getWeft(wefts(draft.drawdown) - 1 - offset);
-      extended_pattern.unshiftWeftSequence(ending_row);
-
-      weft_mats.push(draft.rowShuttleMapping[i]);
-      weft_sys.push(draft.rowSystemMapping[i]);
-      weft_mats.unshift(draft.rowShuttleMapping[wefts(draft.drawdown) - 1 - offset]);
-      weft_sys.unshift(draft.rowSystemMapping[wefts(draft.drawdown) - 1 - offset]);
-
-
-    }
-
-    const expanded_draft = initDraftFromDrawdown(extended_pattern.export());
-    expanded_draft.colShuttleMapping = warp_mats.val();
-    expanded_draft.colSystemMapping = warp_sys.val();
-    expanded_draft.rowShuttleMapping = weft_mats.val();
-    expanded_draft.rowSystemMapping = weft_sys.val();
-
-    return Promise.resolve(expanded_draft);
-  }
-
 
   /**
    * if the draft is too big, simulation will hang the interface. Impose a size limit to avoid 
@@ -122,62 +65,178 @@ export class SimulationService {
   }
 
 
+
   /**
-   * generates a new simulation with the given draft and simulation parameters
+   * computes an entire simulation from a draft and variables 
    * @param draft 
-   * @param sim 
-   * @returns promise for simulation data
+   * @param simVars 
+   * @returns 
    */
-  public generateSimulationData(draft: Draft, sim: SimulationVars): Promise<SimulationData> {
+  public computeSimulationDataFromDraft(draft: Draft, simVars: SimulationVars): Promise<SimulationData> {
 
     if (!this.isAcceptableSize(draft)) return Promise.reject("size error");
 
-    const currentSim: SimulationData = {
+    const simData: SimulationData = {
       draft: draft,
-      sim: sim,
       topo: null,
-      vtxs: null,
-      layer_maps: null
+      wefts: null,
+      warps: null
     };
 
 
-    return this.tileDraft(draft, sim.boundary).then(expandeddraft => {
-      currentSim.draft = expandeddraft;
-      return getDraftTopology(currentSim.draft, sim);
+    return getDraftTopology(simData.draft, simVars).then(topo => {
+      simData.topo = topo;
+      return followTheWefts(simData.draft, simData.topo, simVars);
+    }).then(paths => {
+      simData.wefts = paths;
+      return renderWarps(simData.draft, simData.topo, simData.wefts, simVars)
+    }).then(paths => {
+      simData.warps = paths;
+      return simData;
+
     })
-      .then(
-        topology => {
-          currentSim.topo = topology;
-          return createLayerMaps(currentSim.draft, topology, sim);
-        }
-      )
-      .then(lm => {
-        currentSim.layer_maps = lm;
-        return translateTopologyToPoints(currentSim.draft, currentSim.topo, lm, sim);
-
-
-      }).then(vtxs => {
-        currentSim.vtxs = vtxs;
-        return currentSim;
-      })
 
   }
 
-  public setupSimulation(renderer, scene, camera, controls) {
 
+  /**
+   * computes an entire simulation from a draft and variables 
+   * @param draft 
+   * @param simVars 
+   * @returns 
+   */
+  public computeSimulationData(draft: Draft, simVars: SimulationVars): Promise<SimulationData> {
 
+    if (!this.isAcceptableSize(draft)) return Promise.reject("size error");
 
-    const animate = function () {
-      requestAnimationFrame(animate);
-      renderer.render(scene, camera);
-      controls.update();
-
+    const simData: SimulationData = {
+      draft: draft,
+      topo: null,
+      wefts: null,
+      warps: null
     };
+
+
+    return getDraftTopology(simData.draft, simVars).then(topo => {
+      simData.topo = topo;
+      return followTheWefts(simData.draft, simData.topo, simVars);
+    }).then(paths => {
+      simData.wefts = paths;
+      return renderWarps(simData.draft, simData.topo, simData.wefts, simVars)
+    }).then(paths => {
+      simData.warps = paths;
+      return simData;
+
+    })
+
+  }
+
+
+  /**
+   * computes the topology and verticies for the draft that has already been provided
+   * @param draft 
+   * @param simVars 
+   * @returns 
+   */
+  public recomputeTopoAndVerticies(simData: SimulationData, simVars: SimulationVars): Promise<SimulationData> {
+
+    if (!this.isAcceptableSize(simData.draft)) return Promise.reject("size error");
+
+
+
+    return getDraftTopology(simData.draft, simVars).then(topo => {
+      simData.topo = topo;
+      return followTheWefts(simData.draft, simData.topo, simVars);
+    }).then(paths => {
+      simData.wefts = paths;
+      return renderWarps(simData.draft, simData.topo, simData.wefts, simVars)
+    }).then(paths => {
+      simData.warps = paths;
+      return simData;
+
+    })
+
+
+  }
+
+  //use the current toplogy but recompute the positions of the verticies based on the simVars
+  public recomputeVerticies(simData: SimulationData, simVars: SimulationVars): Promise<SimulationData> {
+
+    return followTheWefts(simData.draft, simData.topo, simVars)
+      .then(paths => {
+        simData.wefts = paths;
+        return renderWarps(simData.draft, simData.topo, simData.wefts, simVars);
+      }).then(paths => {
+        simData.warps = paths;
+        return simData;
+
+      });
+  }
+
+
+
+  public animate() {
+    const gravity = new THREE.Vector3(0, -9.81, 0);
+    const timeStep = 1 / 60;
+    const damping = 0.98;
+
+    requestAnimationFrame(() => this.animate()); // Bind 'this'
+    this.controls.update();
+
+    for (let p of this.particles) {
+      p = applyForce(p, gravity.clone());
+    }
+
+    // Verlet integration
+    for (let p of this.particles) {
+      p = verlet(p, damping, timeStep);
+    }
+
+    // Satisfy spring constraints multiple times (for stiffness)
+    for (let i = 0; i < 5; i++) {
+      for (let s of this.springs) {
+        s = satisfyConstraint(s);
+      }
+    }
+
+    // Update visuals
+    for (const p of this.particles) {
+      updateParticleMesh(p);
+    }
+
+    for (const s of this.springs) {
+      updateSpringMesh(s);
+    }
+
+    this.renderer.render(this.scene, this.camera);
+
+
+
+  }
+
+
+
+  public setupSimulation(renderer, scene, camera, controls, gui, particles, springs) {
+    this.renderer = renderer;
+    this.scene = scene;
+    this.camera = camera;
+    this.controls = controls;
+    this.gui = gui;
+    this.particles = particles;
+    this.springs = springs;
+
+    // const light = new THREE.DirectionalLight(0xffffff, 1);
+    // light.position.set(5, 10, 7.5);
+    // this.scene.add(light);
+
 
     controls.update();
-    animate();
+
+    this.animate();
 
   }
+
+
 
   public snapToX(controls) {
     controls.target = new THREE.Vector3(200, 0, 0);
@@ -186,20 +245,9 @@ export class SimulationService {
 
 
 
-  public recalcSimData(scene, draft: Draft, warp_spacing: number, layer_spacing: number, layer_threshold: number, max_interlacement_width: number, max_interlacement_height: number, boundary: number, radius: number, ms: MaterialsService): Promise<SimulationData> {
+  public recalcSimData(draft: Draft, simVars: SimulationVars): Promise<SimulationData> {
 
-    const sim: SimulationVars = {
-      warp_spacing,
-      layer_spacing,
-      layer_threshold,
-      max_interlacement_width,
-      max_interlacement_height,
-      boundary,
-      radius,
-      ms
-    };
-
-    return this.generateSimulationData(draft, sim)
+    return this.computeSimulationDataFromDraft(draft, simVars)
       .then(simdata => {
         return simdata
       })
@@ -208,21 +256,21 @@ export class SimulationService {
   /**
    * called when a rendering value changes that does not require a full recalculation of the simulation data
    */
-  public redrawCurrentSim(scene, draft: Draft) {
+  public redrawSimColors(draft: Draft, simVars: SimulationVars) {
 
     //update warp material colors
     draft.colShuttleMapping.forEach((material_id, j) => {
-      let color = this.ms.getColorForSim(material_id);
+      let color = simVars.ms.getColorForSim(material_id);
       const render_color = new THREE.Color(color);
-      let warp_render = scene.getObjectByName('warp-' + j);
+      let warp_render = this.scene.getObjectByName('warp-' + j);
       warp_render.material.color.set(render_color);
 
     })
 
     draft.rowShuttleMapping.forEach((material_id, j) => {
-      let color = this.ms.getColorForSim(material_id);
+      let color = simVars.ms.getColorForSim(material_id);
       const render_color = new THREE.Color(color);
-      let weft_render = scene.getObjectByName('weft-' + j);
+      let weft_render = this.scene.getObjectByName('weft-' + j);
       weft_render.material.color.set(render_color);
 
     })
@@ -234,56 +282,84 @@ export class SimulationService {
   }
 
 
-  public renderSimdata(scene, selection: Bounds, simdata: SimulationData, warps: boolean, wefts: boolean, warp_layer: boolean, weft_layers: boolean, topo: boolean, show_draft: boolean): Promise<any> {
-    this.hasSimulation = true;
-
-    if (simdata.draft == null) return;
-
-    //if no explicit selection has been made, use the default full boundary
-
-    scene.clear();
+  //** renders the current for simData in this class */
+  public redraw(selection: Bounds, simData: SimulationData, simVars: SimulationVars): Promise<any> {
+    this.scene.clear();
 
     const light = new THREE.DirectionalLight(0xffffff, 1.0);
     const back_light = new THREE.DirectionalLight(0xffffff, 1.0);
-    scene.add(light);
-    scene.add(back_light);
+    this.scene.add(light);
+    this.scene.add(back_light);
 
     light.position.set(20, 0, 50);
     back_light.position.set(20, 0, -50);
 
 
-    const boundary_vtx = this.getBoundaryVtxs(simdata, selection);
+    //update the particle positions here: 
 
 
-    this.drawAxis(scene, simdata, boundary_vtx);
-    this.drawYarns(scene, simdata, selection, boundary_vtx);
-    // this.drawEndCaps(scene, simdata, boundary_vtx);
-    // this.drawWarpLayerMap(scene, boundary_vtx);
-    // this.drawWeftLayerMap(scene, boundary_vtx);
-    // this.drawTopology(scene, boundary_vtx);
-    // this.drawDraft(scene, this.currentSim.draft, this.currentSim.sim, boundary_vtx);
 
+    if (!simVars.simulate) {
+      const boundary_vtx = this.getBoundaryVtxs(simData.wefts, selection);
+      this.drawAxis(boundary_vtx);
+      this.drawYarns(simData, simVars, selection, boundary_vtx);
+    } else {
+      if (simVars.simulate) this.drawSimulation(simData, simVars);
+    }
+    //  this.drawEndCaps(scene, simdata, boundary_vtx);
+    //   this.drawWarpLayerMap(scene, boundary_vtx);
+    //   this.drawWeftLayerMap(scene, boundary_vtx);
+    //   this.drawTopology(scene, boundary_vtx);
+    //   this.drawDraft(scene, this.currentSim.draft, this.currentSim.sim, boundary_vtx);
 
-    if (!wefts) this.hideWefts();
-    if (!warps) this.hideWarps();
-    if (!warp_layer) this.hideWarpLayerMap();
-    if (!weft_layers) this.hideWeftLayerMap();
-    if (!topo) this.hideTopo();
-    if (!show_draft) this.hideDraft();
 
     return Promise.resolve()
 
   }
 
-  drawAxis(scene, simdata: SimulationData, boundary_vtx: any) {
+
+  drawSimulation(simData: SimulationData, simVars: SimulationVars) {
+    for (const yarn of simData.wefts) {
+      let count = 0;
+
+      let diameter = simVars.ms.getDiameter(yarn.material);
+      let color = simVars.ms.getColorForSim(yarn.material);
+
+
+      for (const vtx of yarn.vtxs) {
+
+        const p = createParticle(vtx.x, vtx.y, vtx.z, false);
+
+        if (vtx.ndx.j === 0 || vtx.ndx.j === warps(simData.draft.drawdown) - 1) p.pinned = true;
+        this.particles.push(p);
+        this.scene.add(p.mesh);
+
+        if (count >= 1) {
+          const distance = this.particles[count - 1].position.distanceTo(this.particles[count].position);
+          let s = createSpring(this.particles[count - 1], this.particles[count], distance, color, diameter)
+          this.springs.push(s);
+          this.scene.add(s.mesh);
+
+        }
+        count++;
+      }
+    }
+
+    return Promise.resolve(simData);
+
+  }
+
+
+  drawAxis(boundary_vtx: any) {
 
     this.axis_scene = new THREE.Group();
+    let axis_offset = 5.
 
     //X AXIS 
     const material = new THREE.LineBasicMaterial({ color: 0x0000ff });
     const points = [];
-    points.push(new THREE.Vector3(boundary_vtx.min_x - 20, boundary_vtx.min_y - 20, 0));
-    points.push(new THREE.Vector3(boundary_vtx.max_x + 20, boundary_vtx.min_y - 20, 0));
+    points.push(new THREE.Vector3(boundary_vtx.min_x - axis_offset, boundary_vtx.min_y - axis_offset, 0));
+    points.push(new THREE.Vector3(boundary_vtx.max_x + axis_offset, boundary_vtx.min_y - axis_offset, 0));
 
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const line = new THREE.Line(geometry, material);
@@ -292,8 +368,8 @@ export class SimulationService {
 
     /**Y AXIS */
     const y_points = [];
-    y_points.push(new THREE.Vector3(boundary_vtx.min_x - 20, boundary_vtx.min_y - 20, 0));
-    y_points.push(new THREE.Vector3(boundary_vtx.min_x - 20, boundary_vtx.max_y + 20, 0));
+    y_points.push(new THREE.Vector3(boundary_vtx.min_x - axis_offset, boundary_vtx.min_y - axis_offset, 0));
+    y_points.push(new THREE.Vector3(boundary_vtx.min_x - axis_offset, boundary_vtx.max_y + axis_offset, 0));
 
     const y_geometry = new THREE.BufferGeometry().setFromPoints(y_points);
     const y_line = new THREE.Line(y_geometry, material);
@@ -301,8 +377,8 @@ export class SimulationService {
 
     /**Z AXIS */
     const z_points = [];
-    z_points.push(new THREE.Vector3(boundary_vtx.min_x - 20, boundary_vtx.min_y - 20, 0));
-    z_points.push(new THREE.Vector3(boundary_vtx.min_x - 20, boundary_vtx.min_y - 20, 100));
+    z_points.push(new THREE.Vector3(boundary_vtx.min_x - axis_offset, boundary_vtx.min_y - axis_offset, 0));
+    z_points.push(new THREE.Vector3(boundary_vtx.min_x - axis_offset, boundary_vtx.min_y - axis_offset, axis_offset));
 
 
     const z_geometry = new THREE.BufferGeometry().setFromPoints(z_points);
@@ -313,64 +389,51 @@ export class SimulationService {
 
 
     this.axis_scene = this.applyOrientationConversion(this.axis_scene, boundary_vtx);
-    scene.add(this.axis_scene);
+    this.scene.add(this.axis_scene);
 
 
   }
 
   /**
-   * given the vtx data and a boundary, this function returns the min/max values for wefts and warps to be used to position the start and end of the warp and weft data. 
+   * given the vtx data this function returns the min/max values for wefts and warps
    * @param simdata 
    * @returns 
    */
-  getBoundaryVtxs(simdata: SimulationData, selection: Bounds): { min_x: number, max_x: number, min_y: number, max_y: number } {
-    const vtxs = simdata.vtxs;
+  getBoundaryVtxs(paths: Array<WeftPath>, selection: Bounds): { min_x: number, max_x: number, min_y: number, max_y: number } {
 
-    if (vtxs == null) return;
+    //collapse the paths into a flat list
+    const vtxs: Array<YarnVertex> = getFlatVtxList(paths);
+    console.log("VTXS ", vtxs)
+
+
+    if (vtxs.length == 0) return;
 
 
     //get the weft boundary, draw warps from this data
-    let in_bound_wefts = vtxs.wefts.filter((el, ndx) => (ndx >= selection.topleft.y && ndx < selection.topleft.y + selection.height));
+    let in_bound_wefts = vtxs.filter((el) => (el.ndx.i >= selection.topleft.y && el.ndx.i < selection.topleft.y + selection.height));
 
-    let min_y = in_bound_wefts.reduce((acc, row) => {
-      let min_in_row = row.filter((vtx) => vtx.j >= selection.topleft.x && vtx.j < selection.topleft.x + selection.width).reduce((subacc, vtx) => {
-        if (vtx.y < subacc) return vtx.y;
-        return subacc;
-      }, 10000);
+    let min_y = in_bound_wefts.filter((vtx) => vtx.ndx.j >= selection.topleft.x && vtx.ndx.j < selection.topleft.x + selection.width)
+      .reduce((acc, vtx) => {
+        if (vtx.y < acc) return vtx.y;
+        return acc;
+      }, 100000);
 
-      if (min_in_row < acc) return min_in_row;
-      return acc;
-    }, 100000);
-
-    let max_y = in_bound_wefts.reduce((acc, row) => {
-      let max_in_row = row.filter((vtx) => vtx.j >= selection.topleft.x && vtx.j < selection.topleft.x + selection.width).reduce((subacc, vtx) => {
-        if (vtx.y > subacc) return vtx.y;
-        return subacc;
-      }, 0);
-
-      if (max_in_row > acc) return max_in_row;
+    let max_y = in_bound_wefts.filter((vtx) => vtx.ndx.j >= selection.topleft.x && vtx.ndx.j < selection.topleft.x + selection.width).reduce((acc, vtx) => {
+      if (vtx.y > acc) return vtx.y;
       return acc;
     }, 0);
 
-    let min_x = in_bound_wefts.reduce((acc, row) => {
-      let min_in_row = row.filter((vtx) => vtx.j >= selection.topleft.x && vtx.j < selection.topleft.x + selection.width).reduce((subacc, vtx) => {
-        if (vtx.x < subacc) return vtx.x;
-        return subacc;
-      }, 10000);
-
-      if (min_in_row < acc) return min_in_row;
+    let min_x = in_bound_wefts.filter((vtx) => vtx.ndx.j >= selection.topleft.x && vtx.ndx.j < selection.topleft.x + selection.width).reduce((acc, vtx) => {
+      if (vtx.x < acc) return vtx.x;
       return acc;
-    }, 100000);
+    }, 10000);
 
-    let max_x = in_bound_wefts.reduce((acc, row) => {
-      let max_in_row = row.filter((vtx) => vtx.j >= selection.topleft.x && vtx.j < selection.topleft.x + selection.width).reduce((subacc, vtx) => {
-        if (vtx.x > subacc) return vtx.x;
-        return subacc;
-      }, 0);
-
-      if (max_in_row > acc) return max_in_row;
+    let max_x = in_bound_wefts.filter((vtx) => vtx.ndx.j >= selection.topleft.x && vtx.ndx.j < selection.topleft.x + selection.width).reduce((acc, vtx) => {
+      if (vtx.x > acc) return vtx.x;
       return acc;
     }, 0);
+
+
 
     return { min_x, max_x, min_y, max_y };
 
@@ -379,129 +442,38 @@ export class SimulationService {
 
   }
 
-  getClosestVtx(simdata: SimulationData, selection: Bounds, warp: boolean, i: number, j: number): YarnVertex {
-
-    if (warp) {
-      let vtxs = simdata.vtxs.warps[j];
-      let closest_ndx = vtxs.reduce((acc, vtx, ndx) => {
-        if (Math.abs(vtx.i - i) < acc.dist) return { dist: Math.abs(vtx.i - i), ndx };
-        return acc;
-      }, { dist: 10000, ndx: -1 });
-      if (closest_ndx.ndx == -1) return null;
-      return vtxs[closest_ndx.ndx]
-    } else {
-
-      //on wefts 
-      let vtxs = simdata.vtxs.wefts[i];
-      let closest_ndx = vtxs.reduce((acc, vtx, ndx) => {
-        if (vtx.j >= selection.topleft.x && vtx.j < (selection.topleft.x + selection.width) && Math.abs(vtx.j - j) < acc.dist) return { dist: Math.abs(vtx.j - j), ndx };
-        return acc;
-      }, { dist: 10000, ndx: -1 });
-      if (closest_ndx.ndx == -1) return null;
-      return vtxs[closest_ndx.ndx]
-    }
-  }
 
   /**
    * this renders the imagery of the yarns. It uses the boundary provided by 
    * @param scene 
    * @param simdata 
    */
-  drawYarns(scene, simdata: SimulationData, selection: Bounds, boundary_vtx: any) {
+  drawYarns(simdata: SimulationData, simVars: SimulationVars, selection: Bounds, boundary_vtx: any) {
 
     this.warp_scene = new THREE.Group();
     this.warp_scene.name = 'warp-scene'
     this.weft_scene = new THREE.Group();
     this.weft_scene.name = 'weft-scene'
 
-    const vtxs = simdata.vtxs;
-    const draft = simdata.draft;
+    //DRAW THE WAPRS
 
-
-    //DRAW THE WARPS
-    for (let j = selection.topleft.x; j < selection.width + selection.topleft.x; j++) {
+    console.log("WARPS ", simdata.warps)
+    simdata.warps.forEach(path => {
       const pts = [];
-
-
-      if (vtxs.warps[j] !== undefined && vtxs.warps[j].length > 0 && vtxs.warps[j] !== undefined) {
-        const material_id = draft.colShuttleMapping[j];
-        let diameter = this.ms.getDiameter(material_id);
-        let color = this.ms.getColorForSim(material_id);
-
-
-        let in_bounds_vxts = simdata.vtxs.warps[j].filter(el => el.i >= selection.topleft.y && el.i < selection.topleft.y + selection.height);
-
-        let start_vtx = this.getClosestVtx(simdata, selection, true, selection.topleft.y, j);
-        let end_vtx = this.getClosestVtx(simdata, selection, true, selection.topleft.y + selection.height, j);
-
-
-        if (start_vtx !== null) pts.push(new THREE.Vector3(start_vtx.x, boundary_vtx.min_y - 10, -start_vtx.z));
-        in_bounds_vxts.slice().forEach(vtx => {
-          if (vtx.x !== undefined) pts.push(new THREE.Vector3(vtx.x, vtx.y, -vtx.z));
-        });
-        if (end_vtx !== null) pts.push(new THREE.Vector3(end_vtx.x, boundary_vtx.max_y + 10, -end_vtx.z));
-
-
-        if (pts.length !== 0) {
-
-          const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', .1);
-          const geometry = new THREE.TubeGeometry(curve, 100, diameter / 2, 8, false);
-          const material = new THREE.MeshPhysicalMaterial({
-            color: color,
-            depthTest: true,
-            emissive: 0x000000,
-            metalness: 0,
-            roughness: 0.5,
-            clearcoat: 1.0,
-            clearcoatRoughness: 1.0,
-            reflectivity: 0.0
-          });
-
-          let curveObject = new THREE.Mesh(geometry, material);
-          curveObject.name = 'warp-' + (j - selection.topleft.x);
-
-          this.warp_scene.add(curveObject);
-        }
-      }
-    };
-
-    this.warp_scene = this.applyOrientationConversion(this.warp_scene, boundary_vtx);
-    scene.add(this.warp_scene);
-
-
-
-
-    //draw wefts
-    for (let i = selection.topleft.y; i < selection.height + selection.topleft.y; i++) {
-
-      let weft_vtx_list = vtxs.wefts[i];
-
-      let in_bound_vtxs = weft_vtx_list.filter(el => el.j >= selection.topleft.x && el.j < selection.width + selection.topleft.x);
-
-      const pts = [];
-      let start_vtx = this.getClosestVtx(simdata, selection, false, i, selection.topleft.x);
-      let end_vtx = this.getClosestVtx(simdata, selection, false, i, selection.topleft.x + selection.width);
-
-
-      if (start_vtx !== null) pts.push(new THREE.Vector3(boundary_vtx.min_x - 10, start_vtx.y, -start_vtx.z));
-
-      in_bound_vtxs.forEach(vtx => {
+      path.vtxs.forEach(vtx => {
         if (vtx.x !== undefined) {
           pts.push(new THREE.Vector3(vtx.x, vtx.y, -vtx.z));
         }
       });
 
-      if (end_vtx !== null) pts.push(new THREE.Vector3(boundary_vtx.max_x + 10, end_vtx.y, -end_vtx.z));
-
-
       if (pts.length !== 0) {
 
-        const material_id = draft.rowShuttleMapping[i];
-        let diameter = this.ms.getDiameter(material_id);
-        let color = this.ms.getColorForSim(material_id)
+        const material_id = path.material;
+        let diameter = simVars.ms.getDiameter(material_id);
+        let color = simVars.ms.getColorForSim(material_id)
 
-        const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', .1);
-        const geometry = new THREE.TubeGeometry(curve, 100, diameter / 2, 8, false);
+        const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', .01);
+        const geometry = new THREE.TubeGeometry(curve, path.vtxs.length * 10, diameter / 2, 8, false);
         const material = new THREE.MeshPhysicalMaterial({
           color: color,
           emissive: 0x000000,
@@ -513,16 +485,52 @@ export class SimulationService {
           reflectivity: 0.0
         });
         let curveObject = new THREE.Mesh(geometry, material);
-        curveObject.name = 'weft-' + (i - selection.topleft.y);
+        curveObject.name = 'warp-' + path.system + "-" + path.material;
 
         this.weft_scene.add(curveObject);
       }
 
-    }
+    })
+    this.warp_scene = this.applyOrientationConversion(this.warp_scene, boundary_vtx);
+    this.scene.add(this.warp_scene);
 
+    //WEFT SIM
+    console.log("PATHS ", simdata.wefts)
+    simdata.wefts.forEach(path => {
+      const pts = [];
+      path.vtxs.forEach(vtx => {
+        if (vtx.x !== undefined) {
+          pts.push(new THREE.Vector3(vtx.x, vtx.y, -vtx.z));
+        }
+      });
+
+      if (pts.length !== 0) {
+
+        const material_id = path.material;
+        let diameter = simVars.ms.getDiameter(material_id);
+        let color = simVars.ms.getColorForSim(material_id)
+
+        const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', .01);
+        const geometry = new THREE.TubeGeometry(curve, path.vtxs.length * 10, diameter / 2, 8, false);
+        const material = new THREE.MeshPhysicalMaterial({
+          color: color,
+          emissive: 0x000000,
+          depthTest: true,
+          metalness: 0,
+          roughness: 0.5,
+          clearcoat: 1.0,
+          clearcoatRoughness: 1.0,
+          reflectivity: 0.0
+        });
+        let curveObject = new THREE.Mesh(geometry, material);
+        curveObject.name = 'weft-' + path.system + "-" + path.material;
+
+        this.weft_scene.add(curveObject);
+      }
+
+    })
     this.weft_scene = this.applyOrientationConversion(this.weft_scene, boundary_vtx);
-    scene.add(this.weft_scene);
-
+    this.scene.add(this.weft_scene);
   }
 
   // drawDraft(scene, draft: Draft, sim: SimulationVars, boundary_vtx){
@@ -988,100 +996,99 @@ export class SimulationService {
     return object;
   }
 
-  drawEndCaps(scene, simdata: SimulationData, selection: Bounds, boundary_vtx: any) {
+  // drawEndCaps(scene,simdata: SimulationData, selection: Bounds, boundary_vtx: any ){
 
-    const vtxs = simdata.vtxs;
-    const draft = simdata.draft;
-    const bounds = selection;
-    const ms = simdata.sim.ms;
-
-
-
-    if (vtxs.warps.length <= 0) return;
-
-
-    //DRAW WARP ENDS
-    let in_bounds_warps = vtxs.warps.filter(el => el.length > 0 && el[0].j >= bounds.topleft.x && el[0].j < bounds.topleft.x + bounds.width);
-
-    in_bounds_warps.forEach((warp, ndx) => {
-
-      let j = ndx + bounds.topleft.x;
-
-
-      if (warp.length > 0) {
-
-        let start_vtx = this.getClosestVtx(simdata, bounds, true, bounds.topleft.y, j);
-        let end_vtx = this.getClosestVtx(simdata, bounds, true, bounds.topleft.y + bounds.height, j);
-
-
-        const material_id = draft.colShuttleMapping[j];
-        let diameter = ms.getDiameter(material_id);
-        const color = this.ms.getColorForSim(material_id)
-
-
-        const top_geometry = new THREE.CircleGeometry(diameter / 2, 32);
-        top_geometry.rotateX(Math.PI / 2);
+  //   const vtxs = simdata.vtxs;
+  //   const draft = simdata.draft;
+  //   const bounds = selection;
+  //   const ms = simdata.sim.ms;
 
 
 
-        if (start_vtx !== null) top_geometry.translate(start_vtx.x, boundary_vtx.min_y - 10, -start_vtx.z);
-        const material = new THREE.MeshBasicMaterial({ color: color });
-        let end_circle = new THREE.Mesh(top_geometry, material);
-        this.warp_scene.add(end_circle);
+  //   if(vtxs.warps.length <= 0) return;
 
 
-        const bot_geometry = new THREE.CircleGeometry(diameter / 2, 32);
-        bot_geometry.rotateX(3 * Math.PI / 2);
-        if (end_vtx !== null) bot_geometry.translate(end_vtx.x, boundary_vtx.max_y + 10, -end_vtx.z);
-        let top_circle = new THREE.Mesh(bot_geometry, material);
-        // top_circle.tranlsateY(-top/2);
-        // top_circle.tranlsateX(-right/2);
-        this.warp_scene.add(top_circle);
-      }
+  //   //DRAW WARP ENDS
+  //   let in_bounds_warps = vtxs.warps.filter(el => el.length > 0 && el[0].j >= bounds.topleft.x && el[0].j < bounds.topleft.x + bounds.width);
 
-    })
+  //   in_bounds_warps.forEach((warp, ndx) => {
+
+  //     let j = ndx + bounds.topleft.x;
 
 
-    let in_bounds_wefts = vtxs.wefts.filter((el, ndx) => ndx >= bounds.topleft.y && ndx < bounds.topleft.y + bounds.height);
+  //     if(warp.length > 0){
+
+  //       let start_vtx = this.getClosestVtx(simdata, bounds, true, bounds.topleft.y, j);
+  //       let end_vtx = this.getClosestVtx(simdata, bounds, true, bounds.topleft.y + bounds.height, j);
 
 
-    in_bounds_wefts.forEach((weft, ndx) => {
-
-      let in_range = weft.filter(el => el.j >= bounds.topleft.x && el.j < bounds.topleft.x + bounds.width);
-
-      let i = ndx + bounds.topleft.y;
-
-      if (weft.length > 0) {
-        let start_vtx = this.getClosestVtx(simdata, bounds, false, i, bounds.topleft.x);
-        let end_vtx = this.getClosestVtx(simdata, bounds, false, i, bounds.topleft.x + bounds.width);
-
-        const material_id = draft.rowShuttleMapping[i];
-        let diameter = ms.getDiameter(material_id);
-        const color = this.ms.getColorForSim(material_id)
-
-        const top_geometry = new THREE.CircleGeometry(diameter / 2, 32);
-        top_geometry.rotateY(3 * Math.PI / 2);
-        if (start_vtx !== null) top_geometry.translate(boundary_vtx.min_x - 10, start_vtx.y, -start_vtx.z);
-        const material = new THREE.MeshBasicMaterial({ color: color });
-        let end_circle = new THREE.Mesh(top_geometry, material);
-
-        this.weft_scene.add(end_circle);
-
-        const bot_geometry = new THREE.CircleGeometry(diameter / 2, 32);
-        bot_geometry.rotateY(Math.PI / 2);
-        if (end_vtx !== null) bot_geometry.translate(boundary_vtx.max_x + 10, end_vtx.y, -end_vtx.z);
-        let top_circle = new THREE.Mesh(bot_geometry, material);
-        this.weft_scene.add(top_circle);
-
-      }
-
-    })
+  //     const material_id = draft.colShuttleMapping[j];
+  //     let diameter = ms.getDiameter(material_id);
+  //     const color = this.ms.getColorForSim(material_id)
 
 
-  }
+  //     const top_geometry = new THREE.CircleGeometry( diameter/2, 32 );
+  //     top_geometry.rotateX(Math.PI/2);
+
+
+
+  //     if(start_vtx !== null) top_geometry.translate(start_vtx.x, boundary_vtx.min_y-10, -start_vtx.z);
+  //     const material = new THREE.MeshBasicMaterial( { color: color } );
+  //     let end_circle = new THREE.Mesh( top_geometry, material );
+  //     this.warp_scene.add(end_circle);
+
+
+  //     const bot_geometry = new THREE.CircleGeometry(  diameter/2, 32 );
+  //     bot_geometry.rotateX(3*Math.PI/2);
+  //     if(end_vtx !== null) bot_geometry.translate(end_vtx.x, boundary_vtx.max_y+10, -end_vtx.z);
+  //     let top_circle = new THREE.Mesh( bot_geometry, material );
+  //     // top_circle.tranlsateY(-top/2);
+  //     // top_circle.tranlsateX(-right/2);
+  //     this.warp_scene.add( top_circle );
+  //     }
+
+  //   })
+
+
+  //   let in_bounds_wefts = vtxs.wefts.filter((el, ndx) => ndx >= bounds.topleft.y && ndx < bounds.topleft.y + bounds.height);
+
+
+  //  in_bounds_wefts.forEach((weft, ndx) => {
+
+  //     let in_range = weft.filter(el => el.j >= bounds.topleft.x && el.j < bounds.topleft.x + bounds.width);
+
+  //     let i = ndx + bounds.topleft.y;
+
+  //     if(weft.length > 0){
+  //       let start_vtx = this.getClosestVtx(simdata, bounds, false, i, bounds.topleft.x);
+  //       let end_vtx = this.getClosestVtx(simdata, bounds, false, i, bounds.topleft.x + bounds.width);
+
+  //     const material_id = draft.rowShuttleMapping[i];
+  //     let diameter = ms.getDiameter(material_id);
+  //     const color = this.ms.getColorForSim(material_id)
+
+  //     const top_geometry = new THREE.CircleGeometry(  diameter/2, 32 );
+  //     top_geometry.rotateY(3*Math.PI/2);
+  //     if(start_vtx !== null) top_geometry.translate(boundary_vtx.min_x-10, start_vtx.y,-start_vtx.z);
+  //     const material = new THREE.MeshBasicMaterial( { color: color } );
+  //     let end_circle = new THREE.Mesh( top_geometry, material );
+
+  //     this.weft_scene.add(end_circle);
+
+  //     const bot_geometry = new THREE.CircleGeometry( diameter/2, 32 );
+  //     bot_geometry.rotateY(Math.PI/2);
+  //     if(end_vtx !== null) bot_geometry.translate(boundary_vtx.max_x+10, end_vtx.y, -end_vtx.z);
+  //     let top_circle = new THREE.Mesh( bot_geometry, material );
+  //     this.weft_scene.add(top_circle);
+
+  //     }
+
+  //   })
+
+
+  // }
 
 
 
 
 }
-

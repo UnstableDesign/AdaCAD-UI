@@ -1,1928 +1,1955 @@
-import { Cell, Draft, Drawdown, getCellValue, warps, wefts } from "adacad-drafting-lib";
-import { MaterialsService } from "../provider/materials.service";
-import { Deflection, LayerMaps, SimulationVars, TopologyVtx, VertexMaps, WarpInterlacementTuple, WarpRange, WeftInterlacementTuple, YarnFloat, YarnVertex } from "./datatypes";
+
+import { Draft, Drawdown, filterToUniqueValues, getCellValue, warps, wefts } from 'adacad-drafting-lib';
+import { mod } from 'mathjs';
+import * as THREE from 'three';
+import { interpolate, strictMod } from '../helpers';
+import { CNFloat, CNIndex, CNType, ContactNeighborhood, Particle, SimulationVars, Spring, WarpPath, WeftPath, YarnVertex } from './datatypes';
 
 
 
-export const areInterlacement = (a: Cell, b: Cell): boolean => {
+// CONTACT NEIGHBORHOOD UTILITIES // 
 
-  if (getCellValue(a) == null || getCellValue(b) == null) return false;
+const setIndex = (ndx: CNIndex, warps: number, cns: Array<ContactNeighborhood>): Array<ContactNeighborhood> => {
+  let cn = getCN(ndx, warps, cns);
+  cn.ndx = ndx;
+  return cns;
+}
 
-  if (getCellValue(a) != getCellValue(b)) return true;
+const setFace = (ndx: CNIndex, warps: number, cns: Array<ContactNeighborhood>, value: boolean): Array<ContactNeighborhood> => {
+  let cn = getCN(ndx, warps, cns);
+  cn.face = value;
+  return cns;
+}
 
-  return false;
+const getFace = (ndx: CNIndex, warps: number, cns: Array<ContactNeighborhood>): boolean => {
+  let cn = getCN(ndx, warps, cns);
+  return cn.face
+}
+
+const setNodeType = (ndx: CNIndex, warps: number, cns: Array<ContactNeighborhood>, type: CNType): Array<ContactNeighborhood> => {
+  let cn = getCN(ndx, warps, cns);
+  cn.node_type = type;
+  return cns;
+}
+
+const getNodeType = (ndx: CNIndex, warps: number, cns: Array<ContactNeighborhood>): CNType => {
+  let cn = getCN(ndx, warps, cns);
+  return cn.node_type
+}
+
+const setMvY = (ndx: CNIndex, warps: number, cns: Array<ContactNeighborhood>, mv_y: number): Array<ContactNeighborhood> => {
+  if (ndx.j < 0 || ndx.j >= warps) return cns;
+  let cn = getCN(ndx, warps, cns);
+  cn.mv.y = mv_y;
+  return cns;
+}
+
+const getMvY = (ndx: CNIndex, warps: number, cns: Array<ContactNeighborhood>): number => {
+  let cn = getCN(ndx, warps, cns);
+  return cn.mv.y;
+}
+
+const setMvZ = (ndx: CNIndex, warps: number, cns: Array<ContactNeighborhood>, mv_z: number): Array<ContactNeighborhood> => {
+  if (ndx.j < 0 || ndx.j >= warps) return cns;
+  let cn = getCN(ndx, warps, cns);
+  cn.mv.z = mv_z;
+  return cns;
+}
+
+const getMvZ = (ndx: CNIndex, warps: number, cns: Array<ContactNeighborhood>): number => {
+  let cn = getCN(ndx, warps, cns);
+  return cn.mv.z;
 }
 
 
-export const getOrientation = (a: Cell, b: Cell): boolean => {
-
-  if (getCellValue(a) == true && getCellValue(b) == false) return true;
-  return false;
+const getCN = (ndx: CNIndex, warps: number, cns: Array<ContactNeighborhood>): ContactNeighborhood => {
+  let ndx_flat = 4 * (ndx.i * warps + ndx.j) + ndx.id;
+  return cns[ndx_flat];
 }
 
-/**
- * analyzes the relationship between neighboring wefts to figure out where the warp travels from front to back 
- * used to determine layering 
- * @param dd drawdown
- * @returns an array of interlacements 
- */
-export const getWarpInterlacementTuples = (dd: Drawdown): Array<WarpInterlacementTuple> => {
-  const ilace_list: Array<WarpInterlacementTuple> = [];
-
-  for (let i = 0; i < wefts(dd); i++) {
-    let i_top = i + 1;
-    let i_bot = i;
-
-    for (let j = 0; j < warps(dd); j++) {
-
-
-      if (i_top !== wefts(dd)) {
-
-        const ilace = areInterlacement(dd[i_top][j], dd[i_bot][j]);
-        if (ilace) {
-
-          ilace_list.push({
-            i_bot: i_bot,
-            i_top: i_top,
-            j: j,
-            orientation: getOrientation(dd[i_top][j], dd[i_bot][j])
-          })
-        }
-      }
-    }
-  }
-  return ilace_list;
+const setAndOppositeFaces = (f1: boolean, f2: boolean): boolean => {
+  if (f1 == null || f2 == null) return false;
+  return (f1 !== f2);
 }
 
-
-
-export const getWeftInterlacementTuples = (dd: Drawdown): Array<WeftInterlacementTuple> => {
-  const ilace_list: Array<WeftInterlacementTuple> = [];
-
-  for (let j = 0; j < warps(dd); j++) {
-    for (let i = 0; i < wefts(dd); i++) {
-
-      let j_left = j;
-      let j_right = j + 1;
-
-
-      if (j_right !== warps(dd)) {
-
-        const ilace = areInterlacement(dd[i][j_left], dd[i][j_right]);
-        if (ilace) {
-
-          ilace_list.push({
-            j_left: j_left,
-            j_right: j_right,
-            i: i,
-            orientation: getOrientation(dd[i][j_left], dd[i][j_right])
-          })
-        }
-      }
-    }
-  }
-  return ilace_list;
-}
-
-
-
-
-/**
- * given a list of interlacments, see if there are interlacements with opposite orientation within the list that would indicate that these two yarns cross eachother at some point.
- * @param ilaces 
- * @returns 
- */
-export const hasBarrier = (ilaces: Array<WarpInterlacementTuple> | Array<WeftInterlacementTuple>): boolean => {
-
-  let last = null;
-  let barrier_found = false;
-  ilaces.forEach(ilace => {
-
-    if (last == null) last = ilace.orientation;
-    if (last !== ilace.orientation) barrier_found = true;
-  })
-
-  return barrier_found;
-
+const setAndSameFaces = (f1: boolean, f2: boolean): boolean => {
+  if (f1 == null || f2 == null) return false;
+  return (f1 == f2);
 }
 
 /**
- * checks to see if either of the wefts we are comparing against is on the edge. 
- * @param draft 
- * @param ilaces 
- * @returns 
- */
-export const containsWeftEdge = (draft: Draft, ilaces: Array<WarpInterlacementTuple>): boolean => {
-
-  ilaces.forEach(ilace => {
-    if (ilace.i_top == wefts(draft.drawdown) - 1) return true;
-    if (ilace.i_bot == 0) return true;
-  })
-
-  return false;
-
-}
-
-/**
-* given a list of interlacments, see if there are interlacements with opposite orientation within the list that would indicate that these two yarns cross eachother at some point.
-* @param ilaces 
-* @returns 
-*/
-export const hasWeftBarrierInRange = (ilaces: Array<WarpInterlacementTuple>, start: number, end: number, size: number, draft: Draft): boolean => {
-
-  let adj_start = Math.max(start - size, 0);
-  let adj_end = Math.min(end + size, warps(draft.drawdown));
-
-  let all_relevant_interlacements = ilaces.filter(el => el.j > adj_start && el.j < adj_end);
-  return hasBarrier(all_relevant_interlacements);
-
-
-}
-
-export const hasWarpBarrierInRange = (ilaces: Array<WeftInterlacementTuple>, start: number, end: number, size: number, draft: Draft): boolean => {
-
-
-
-  let adj_start = Math.max(start - size, 0);
-  let adj_end = Math.min(end + size, wefts(draft.drawdown));
-
-  let all_relevant_interlacements = ilaces.filter(el => el.i > adj_start && el.i < adj_end);
-  return hasBarrier(all_relevant_interlacements);
-
-
-}
-
-
-
-
-export const positionFloatingWefts = (i_active: number, i_check: number, j_start: number, j_end: number, ms: MaterialsService, draft: Draft, weft_vtxs: Array<Array<YarnVertex>>): Array<Array<YarnVertex>> => {
-  let check_mat = ms.getDiameter(draft.rowShuttleMapping[i_check]);
-  let active_mat = ms.getDiameter(draft.rowShuttleMapping[i_active]);
-  for (let j = j_start; j <= j_end; j++) {
-    weft_vtxs[i_active][j].y = weft_vtxs[i_check][j].y + (check_mat / 2 + active_mat / 2);
-  }
-  return weft_vtxs;
-}
-
-
-/**
- * given two rows (i) generate a list of all interlacments (between jstart and end) that exist between these two rows
- * @param i_active 
- * @param i_check 
- * @param j_start 
- * @param j_end 
- * @param draft 
- * @returns 
- */
-export const getInterlacementsBetweenWefts = (i_active: number, i_check: number, j_start: number, j_end: number, draft: Draft) => {
-
-  let ilace_list: Array<WarpInterlacementTuple> = [];
-
-  if (i_check < 0) {
-    return ilace_list;
-  }
-
-  for (let j = j_start; j <= j_end; j++) {
-
-    const are_interlacements = areInterlacement(draft.drawdown[i_active][j], draft.drawdown[i_check][j]);
-    if (are_interlacements) ilace_list.push({
-      i_top: i_active,
-      i_bot: i_check,
-      j: j,
-      orientation: getOrientation(draft.drawdown[i_active][j], draft.drawdown[i_check][j])
-    })
-  }
-  return ilace_list;
-}
-
-
-/**
- * given two columsn/warps (j) generate a list of all interlacments (between istart and iend) that exist between these two warps
- * @param j_active 
- * @param j_check 
- * @param i_start 
- * @param i_end 
- * @param draft 
- * @returns 
- */
-export const getInterlacementsBetweenWarps = (j_active: number, j_check: number, i_start: number, i_end: number, draft: Draft) => {
-  let ilace_list: Array<WeftInterlacementTuple> = [];
-  for (let i = i_start; i <= i_end; i++) {
-    const are_interlacements = areInterlacement(draft.drawdown[i][j_active], draft.drawdown[i][j_check]);
-    if (are_interlacements) ilace_list.push({
-      j_left: j_check,
-      j_right: j_active,
-      i: i,
-      orientation: getOrientation(draft.drawdown[i][j_active], draft.drawdown[i][j_check])
-    })
-  }
-  return ilace_list;
-}
-
-
-
-
-export const setLayerZ = (ilace_list: Array<WarpInterlacementTuple>, count: number, layer_spacing: number, warp_vtxs: Array<Array<YarnVertex>>): Array<Array<YarnVertex>> => {
-  // if(count == 0) console.log("------COUNT 0 ", ilace_list);
-
-  ilace_list.forEach(ilace => {
-
-    //warp_vtxs[ilace.i_top][ilace.j].y = warp_vtxs[ilace.i_bot][ilace.j].y + 1;
-
-    for (let i = ilace.i_bot; i <= ilace.i_top; i++) {
-      // console.log("writing to ", i, ilace.j, count);
-      warp_vtxs[i][ilace.j].z = count * layer_spacing;
-    }
-  });
-
-  return warp_vtxs;
-
-}
-
-
-/**
- * a segment with no varience in interlacemetn orientations often signifies a layer. In this snippit, you continue comparing the active row with each subsequent row underneith to identify if it has a barrier. When it finds a barrier, it sets all the warps associated with teh interlacements on the barrier row to the associated layer position. 
- * @param count how many rows have been explored so far
- * @param i_active the row we are attempting to move down
- * @param i_check the row we are checking against
- * @param j_start the j position we are starting to look
- * @param j_end the j position we are ending on
- * @param draft the current draft
- * @param range the distance required from an interlacement to form a layer
- * @param warp_vtxs the warp positions
- * @returns 
- */
-// export const layerWarpsInZBetweenInterlacements = (count: number, i_active:number, i_check: number, j_start: number, j_end: number, draft: Draft, range: number, layer_spacing: number,  warp_vtxs: Array<Array<YarnVertex>>) : Array<Array<YarnVertex>>=> {
-
-//   let ilace_list: Array<WarpInterlacementTuple> = getInterlacementsBetweenWefts(i_active, i_check, j_start, j_end, draft);
-//   //if check is 0 there are no more rows to check and we should just return where we are. 
-//   if(i_check < 0){
-//     // console.log("we are at the end of the range, sending count ", count, ilace_list)
-//     return setLayerZ(ilace_list, count, layer_spacing, warp_vtxs);
-//   }
-
-
-//   // console.log("i lace list comparing", i_active, i_check, j_start, j_end, ilace_list)
-
-//   //if there are no interlacements on this row, it was a duplicate of the previous row, and so we couls just move
-//   if(ilace_list.length == 0)
-//     return layerWarpsInZBetweenInterlacements(count, i_active, i_check-1, j_start, j_end, draft, range, layer_spacing,  warp_vtxs);
-
-
-//   const has_barrier = hasWeftBarrierInRange(ilace_list, j_start, j_end, range, draft);
-//   // console.log("has barrier ", has_barrier);
-//   if(has_barrier){
-//     //set the warp positions here
-//     //each mark each of the barriers as a place that needs to move 
-//     console.log("we are at a barrier, sending count ", count, ilace_list)
-
-//     return setLayerZ(ilace_list, count, layer_spacing, warp_vtxs);
-
-//   }else{
-
-//     let orientation = ilace_list[0].orientation;
-//     if(orientation){
-//       count = count -1;
-//     }else{
-//       count = count + 1;
-//     }
-//     return layerWarpsInZBetweenInterlacements(count, i_active, i_check-1, j_start, j_end, draft, range, layer_spacing, warp_vtxs);
-
-//   } 
-
-// }
-
-/**
- * gets the first instance of an interlacement with a different orientation to the start, returns the index at which it was found and the distance
- * @param start the first weft tuple
- * @param remaining the remaining list
- * @returns the ndx at which the segment ends (before the interlacement) or -1 if no interlacement is ever found.
- */
-export const getNonInterlacingWarpSegment = (start: WarpInterlacementTuple, remaining: Array<WarpInterlacementTuple>): { ndx: number, dist: number } => {
-
-  let ref_orientation = start.orientation;
-  let barrier_cell = remaining.findIndex(el => el.orientation !== ref_orientation);
-
-  if (barrier_cell !== -1) {
-    let distance = Math.abs(start.j - remaining[barrier_cell].j - 1);
-    return { ndx: barrier_cell, dist: distance };
-  } else {
-    return { ndx: -1, dist: -1 };
-  }
-}
-
-
-export const getNonInterlacingWeftSegment = (start: WeftInterlacementTuple, all: Array<WeftInterlacementTuple>): { ndx: number, dist: number } => {
-
-
-  let ref_orientation = start.orientation;
-  let barrier_cell = all.findIndex(el => el.i > start.i && el.orientation !== ref_orientation);
-
-
-  if (barrier_cell !== -1) {
-    let distance = Math.abs(start.i - all[barrier_cell].i - 1);
-    return { ndx: barrier_cell, dist: distance };
-  } else {
-    return { ndx: -1, dist: -1 };
-  }
-}
-
-
-
-
-/**
- * when positioning warps in layers, warps close to the ends of the draft will never get a position set. For this reason, we set an unreasinable z value to flag a process after the warps are positioned to update the ends. 
+ * uses the contact neighborhoods on this row to get a list of floats. Some floats may be out of range (> warps) in the case where the pattern would repeat and wrap
  * @param i 
- * @param j 
- * @param warp_vtx 
+ * @param warps 
+ * @param cns 
  * @returns 
  */
-export const getClosestWarpValue = (i: number, j: number, warp_vtx: Array<Array<YarnVertex>>): number => {
-
-  for (let x = 1; x < warp_vtx.length; x++) {
-    let bot = i - x;
-    let top = i + x;
-
-    if (bot >= 0 && bot <= warp_vtx.length - 1 && warp_vtx[bot][j].z !== -10000000) return warp_vtx[bot][j].z;
-    if (top >= 0 && top <= warp_vtx.length - 1 && warp_vtx[top][j].z !== -10000000) return warp_vtx[top][j].z;
-  }
-  return 0;
-
-}
+export const getRowAsFloats = (i: number, warps: number, cns: Array<ContactNeighborhood>): Array<CNFloat> => {
 
 
-
-export const getWeftOffsetFromWarp = (draft: Draft, i: number, j: number, ms: MaterialsService): number => {
-
-  let warp_diam = ms.getDiameter(draft.colShuttleMapping[j]);
-  let weft_diam = ms.getDiameter(draft.rowShuttleMapping[i]);
-
-  return (warp_diam / 2 + weft_diam / 2);
-
-}
-
-export const getMidpoint = (a: number, b: number): number => {
-  let max = Math.max(a, b);
-  let min = Math.min(a, b);
-  let float = max - min;
-  return min + float / 2;
-
-}
-
-
-export const getTuplesWithinRange = (tuples: Array<WarpInterlacementTuple>, range: WarpRange): Array<WarpInterlacementTuple> => {
-  return tuples.filter(tuple => tuple.j >= range.j_left && tuple.j <= range.j_right);
-}
-
-
-/**
- * given a list of weft-oriented tuples (comapring wefts at each warp) find all the relevant interlacements
- * @param tuples 
- * @param count 
- * @returns 
- */
-export const extractInterlacementsFromTuples = (tuples: Array<WarpInterlacementTuple>, count: number, simvars: SimulationVars): Array<TopologyVtx> => {
-  const topo: Array<TopologyVtx> = [];
-
-  //look left to right
-  for (let x = 1; x < tuples.length; x++) {
-    let last = x - 1;
-    if (tuples[last].orientation !== tuples[x].orientation && (tuples[x].j - tuples[last].j) <= simvars.max_interlacement_width) {
-      topo.push({
-        id: tuples[last].i_bot + "." + tuples[last].i_top + "." + tuples[last].j + "." + tuples[x].j + "." + count,
-        i_top: tuples[last].i_top,
-        i_bot: tuples[last].i_bot,
-        j_left: tuples[last].j,
-        j_right: tuples[x].j,
-        orientation: !tuples[last].orientation,
-        z_pos: count
-      });
-    }
-  }
-
-  let optimal_topo: Array<TopologyVtx> = [];
-  topo.forEach(vtx => {
-    let reduced = reduceInterlacement(vtx, tuples, count);
-
-    if (reduced === null) optimal_topo.push(vtx);
-    else optimal_topo.push(reduced);
-  })
-
-
-
-  return optimal_topo;
-
-
-}
-
-export const reduceInterlacement = (vtx: TopologyVtx, tuples: Array<WarpInterlacementTuple>, count: number): TopologyVtx => {
-
-  if (vtx.j_right - vtx.j_left <= 1) return null;
-
-
-  let inner_tuples = getTuplesWithinRange(tuples, { j_left: vtx.j_left, j_right: vtx.j_right });
-  let right_side_orientation = !vtx.orientation;
-
-  //get the closest interlacment ot the right side
-  let closest = inner_tuples.reduce((acc, val, ndx) => {
-    if (val.orientation !== right_side_orientation && vtx.j_right - val.j < acc.dist) return { ndx, dist: vtx.j_right - val.j }
-    return acc;
-  }, { ndx: -1, dist: vtx.j_right - vtx.j_left });
-
-
-  //this was irreducible
-  if (closest.dist == vtx.j_right - vtx.j_left || closest.dist == 0) return null;
-
-  let new_vtx: TopologyVtx = {
-    id: vtx.i_bot + "." + vtx.i_top + "." + vtx.j_left + "." + vtx.j_right + "." + vtx.z_pos,
-    i_bot: vtx.i_bot,
-    i_top: vtx.i_top,
-    j_left: inner_tuples[closest.ndx].j,
-    j_right: vtx.j_right,
-    z_pos: count,
-    orientation: vtx.orientation
-  }
-
-  return new_vtx;
-
-
-}
-
-/**
- * a recursive function that finds interlacments, returns them, and then searches remaining floating sections to see if they should push to a new layer
- * @param tuples the list of tuples to search
- * @param count  the current layer id
- * @param draft the draft in question
- * @returns 
- */
-export const getInterlacements = (tuples: Array<WarpInterlacementTuple>, range: WarpRange, count: number, draft: Draft, simvars: SimulationVars): Array<TopologyVtx> => {
-
-
-  let closeness_to_edge = Math.ceil(warps(draft.drawdown) / 8);
-
-
-  if (tuples.length < 1) return [];
-
-
-
-  if (tuples[0].i_bot < 0) return [];
-
-
-
-  // if(tuples[0].i_top == wefts(draft.drawdown)-1) return [];
-
-
-  tuples = getTuplesWithinRange(tuples, range);
-
-  const topo = extractInterlacementsFromTuples(tuples, count, simvars);
-
-  let i_bot = tuples[0].i_bot;
-  let i_top = tuples[0].i_top;
-  let orientation = tuples[0].orientation
-
-  let ilaces: Array<TopologyVtx> = [];
-  let float_groups: Array<WarpRange> = splitRangeByVerticies(range, topo);
-
-  float_groups = float_groups.filter(el => el.j_left !== el.j_right);
-
-  //filter out groups where the last warp is included because they tend to be noisy  
-  float_groups = float_groups.filter(el => !(el.j_right != warps(draft.drawdown) - 1 && el.j_right - el.j_left < closeness_to_edge));
-
-
-  float_groups.forEach((range, x) => {
-    //you need this here so it doesn't increment the count un-neccessarily
-    let cur_count = orientation ? count - 1 : count + 1;
-
-    let next_row_tuple: Array<WarpInterlacementTuple> = getInterlacementsBetweenWefts(i_top, i_bot - 1, range.j_left, range.j_right, draft);
-    ilaces = ilaces.concat(getInterlacements(next_row_tuple.slice(), range, cur_count, draft, simvars));
-
-  });
+  let floats = [];
+  let lefts = cns.filter(el => el.node_type == 'ACN' && el.ndx.i == i && el.ndx.id == 0);
+  let rights = cns.filter(el => el.node_type == 'ACN' && el.ndx.i == i && el.ndx.id == 1);
+  if (lefts.length !== rights.length) console.error("THIS ROW HAS AN UNEVEN NUMBER OF ACNS")
 
 
 
 
-  return topo.concat(ilaces);
+  lefts.forEach(left => {
+    let found = false;
 
-}
-
-
-export const getFloatRanges = (draft: Draft, i: number) => {
-  const ranges: Array<WarpRange> = [];
-  let last_ndx = -1;
-  let last_value, cur_value: boolean = false;
-  draft.drawdown[i].forEach((cell, j) => {
-    if (j == 0) {
-      last_ndx = 0;
-      last_value = cell.is_set && cell.is_up;
-    } else {
-      cur_value = cell.is_set && cell.is_up;
-      if (cur_value != last_value) {
-        ranges.push({ j_left: last_ndx, j_right: j })
+    for (let j = left.ndx.j; j < warps && !found; j++) {
+      let right = rights.find(el => el.ndx.j == j);
+      if (right !== undefined) {
+        found = true;
+        floats.push({
+          left: left.ndx,
+          right: right.ndx,
+          edge: false,
+          face: left.face
+        })
       }
-      last_value = cur_value;
-      last_ndx = j;
-
     }
-  })
-  ranges.push({ j_left: last_ndx, j_right: warps(draft.drawdown) - 1 });
-  return ranges;
-}
 
-
-/**
- * after you find a list of verticies between the two rows, you split the semgents of the row between the verticies 
- * @param range 
- * @param verticies 
- * @returns 
- */
-export const splitRangeByVerticies = (range: WarpRange, verticies: Array<TopologyVtx>): Array<WarpRange> => {
-
-  let groups: Array<WarpRange> = [];
-  verticies = sortInterlacementsOnWeft(verticies);
-
-  if (verticies.length == 0) return [range];
-
-
-  for (let v = 0; v < verticies.length; v++) {
-
-    if (v == 0) {
-      groups.push({
-        j_left: range.j_left,
-        j_right: verticies[v].j_left
+    if (!found) {
+      let right = rights.shift();
+      floats.push({
+        left: left.ndx,
+        right: { i: right.ndx.i, j: warps + right.ndx.j, id: 1 }, //get the first in the list
+        edge: false,
+        face: left.face
       })
     }
 
-    if (v > 0 && v <= verticies.length - 1) {
-      groups.push({
-        j_left: verticies[v - 1].j_right,
-        j_right: verticies[v].j_left
-      })
-    }
 
-    if (v == verticies.length - 1) {
-      groups.push({
-        j_left: verticies[v].j_right,
-        j_right: range.j_right
-      })
-    }
-
-  }
-  return groups;
-}
-
-
-
-export const correctInterlacementLayers = (all: Array<TopologyVtx>, weft: Array<TopologyVtx>, layer_threshold: number): Array<TopologyVtx> => {
-
-
-  //this is a list of every possible interlacement between wefts but also includes sometimes more interlacements than we need. For instance, with satin, it might detect layers within float spaces. We can identify those as interlacements that share a corner. 
-
-  let hard_overlaps = [];
-  let to_check = weft.slice();
-  all.forEach((topo) => {
-    to_check = to_check.filter(el => el.id != topo.id);
-    to_check.forEach((check) => {
-      if (topo.i_bot == check.i_bot && topo.j_left == check.j_left) hard_overlaps.push({ a: topo.id, b: check.id })
-      if (topo.i_bot == check.i_bot && topo.j_right == check.j_right) hard_overlaps.push({ a: topo.id, b: check.id })
-      if (topo.i_top == check.i_top && topo.j_left == check.j_left) hard_overlaps.push({ a: topo.id, b: check.id })
-      if (topo.i_top == check.i_top && topo.j_right == check.j_right) hard_overlaps.push({ a: topo.id, b: check.id })
-    });
   })
-
-  hard_overlaps.forEach(topo => {
-    weft = weft.filter(el => el.id !== topo.b);
-
-    // let a:TopologyVtx = all.find(el => el.id == topo.a);
-    // let b:TopologyVtx = weft.find(el => el.id == topo.b);
-    // if(a !== undefined && b!== undefined){
-    // if(Math.abs(a.z_pos) < Math.abs(b.z_pos)) weft = weft.filter(el => el.id !== b.id);
-    // else all = all.filter(el => el.id !== a.id);
-    // }
-  });
-  all = weft.slice();
-
-
-  let compressed_weft = [];
-  let last = null;
-
-  //check weft from left to right and strip out anything that seems to be an outlier
-  weft.forEach(vtx => {
-
-    if (vtx.z_pos == last) {
-      compressed_weft[compressed_weft.length - 1].count++;
-      compressed_weft[compressed_weft.length - 1].els.push(vtx);
-    } else {
-      compressed_weft.push({ id: vtx.z_pos, count: 1, els: [vtx] });
-    }
-    last = vtx.z_pos;
-  });
-
-
-  let mark_for_removal = [];
-  compressed_weft.forEach((item, ndx) => {
-    if (item.count < layer_threshold) {
-      //check left 
-      // console.log("Removing below threshold elements")
-      item.els.forEach(el => {
-        mark_for_removal.push(el.id);
-      })
-      //let left_mag = (ndx -1 >= 0) ? compressed_weft[ndx-1].count : -1;
-      //let right_mag = (ndx +1 < compressed_weft.length) ? compressed_weft[ndx+1].count : -1;
-
-      // if(left_mag !== -1 && right_mag != -1){
-      //   let new_pos = -1;
-      //   if(left_mag >= right_mag){
-      //     new_pos = compressed_weft[ndx-1].id;
-      //   }else{
-      //     new_pos = compressed_weft[ndx+1].id;
-      //   }
-
-
-      // }
-
-    }
-  })
-
-  weft = weft.filter(el => mark_for_removal.find(item => item == el.id) == undefined);
-  all = weft.slice();
-
-
-
-  //check weft from top to bottom
-  //this has the problem that if there is an error somewhere, it will no ripple out through the cloth. 
-  weft.forEach(vtx => {
-
-    let shares_layer = all.filter(el =>
-      (el.j_left == vtx.j_right && el.i_top == vtx.i_bot) || (el.j_right == vtx.j_left && el.i_top == vtx.i_bot))
-
-    shares_layer.forEach(topo_vtx => {
-      vtx.z_pos = topo_vtx.z_pos;
-    })
-
-  });
-
-  return weft;
-}
-
-
-
-/**
- * this function takes a draft and input variables and uses those to generate a list of vertexes between which yarns will cross on the z plane. These points are used to determine how layers are formed and how yarns will stack relative to eacother. 
- */
-export const getDraftTopology = async (draft: Draft, sim: SimulationVars): Promise<Array<TopologyVtx>> => {
-  let dd = draft.drawdown;
-  let topology: Array<TopologyVtx> = [];
-  const warp_tuples = getWarpInterlacementTuples(dd);
-
-
-  //look at each weft
-  for (let i = 0; i < wefts(dd); i++) {
-    //get the interlacements associated with this row
-    let a = warp_tuples.filter(el => el.i_top == i);
-    let range = { j_left: 0, j_right: warps(draft.drawdown) - 1 }
-    let verticies = getInterlacements(a, range, 0, draft, sim);
-    let corrected = correctInterlacementLayers(topology, verticies, sim.layer_threshold);
-    topology = topology.concat(corrected);
-  }
-
-
-
-  return Promise.resolve(topology);
-
-}
-
-
-/**
- * checks if there is a layer assigned to the input layer within a given warp range
- * @param layer_map 
- * @param val 
- * @param i_min 
- * @param i_max 
- * @param j 
- * @returns the index at which the other layer was found, or -1 if not found in range
- */
-export const warpLayerValueInRange = (layer_map: Array<Array<number>>, val: number, i_min: number, i_max: number, j: number): number => {
-
-  let adj_imin = Math.max(0, i_min);
-
-
-  let warp: Array<number> = layer_map.reduce((acc, val) => {
-    return acc.concat(val[j])
-  }, []);
-
-  let range = warp
-    .filter((el, ndx) => ndx > adj_imin && ndx < i_max)
-
-
-  let has_value = range.findIndex(el => el == val);
-  if (has_value !== -1) return adj_imin + has_value;
-
-  if (i_min == 0) return 0;
-
-  if (i_max == layer_map.length - 1) return layer_map.length - 1;
-
-  return -1;
-
-}
-
-/**
- * checks if there is the indiciated value found along a warp within the specified range
- * @param layer_map 
- * @param val 
- * @param i_min 
- * @param i_max 
- * @param j 
- * @returns 
- */
-export const weftLayerValueInRange = (layer_map: Array<Array<number>>, val: number, j_min: number, j_max: number, i: number): number => {
-
-  let range = layer_map[i]
-    .filter((el, ndx) => ndx > Math.max(0, j_min) && ndx < j_max)
-
-  let has_value = range.findIndex(el => el == val);
-  if (has_value !== -1) return has_value;
-
-  if (j_min == 0) return 0;
-
-  if (j_max == layer_map[0].length - 1) return layer_map[0].length - 1;
-
-  return -1;
-
-}
-
-
-
-
-/**
- * takes interlacements associted with a layer and organizes them to associate each warp location with a given location
- * @param layer_map 
- * @param interlacements 
- * @param max_ilace_width how close do warps need to be in an interlacement to consider these two warps being on the same layer
- * @param max_ilace_height how close do wefts need to be in an interlacement to consider these wefts as being on the same layer
- * @returns 
- */
-export const addWarpLayerInterlacementsToMap = (layer_map: Array<Array<number>>, interlacements: Array<TopologyVtx>, max_ilace_width: number, max_ilace_height: number): Array<Array<number>> => {
-
-  interlacements.forEach(ilace => {
-    let height = ilace.i_top - ilace.i_bot;
-    if (height <= max_ilace_height) {
-      //span the interlaced warps onto the same layer
-      for (let i = ilace.i_bot; i <= ilace.i_top; i++) {
-        if (layer_map[i][ilace.j_left] == null) layer_map[i][ilace.j_left] = ilace.z_pos;
-        if (layer_map[i][ilace.j_right] == null) layer_map[i][ilace.j_right] = ilace.z_pos;
-      }
-
-      let i_min = Math.max(0, ilace.i_bot - max_ilace_height);
-      let i_max = Math.min(ilace.i_top + max_ilace_height, layer_map.length - 1);
-
-
-      //reach out from all four corners and see if there is an interlacement with the same layer val in range
-      let bottom_left = warpLayerValueInRange(layer_map, ilace.z_pos, i_min, ilace.i_bot, ilace.j_left);
-      if (bottom_left !== -1) {
-        for (let i = i_min; i < ilace.i_bot; i++) {
-          if (layer_map[i][ilace.j_left] == null) layer_map[i][ilace.j_left] = ilace.z_pos;
-        }
-      }
-
-      let bottom_right = warpLayerValueInRange(layer_map, ilace.z_pos, i_min, ilace.i_bot, ilace.j_right);
-      if (bottom_right !== -1) {
-        for (let i = bottom_right; i <= ilace.i_bot; i++) {
-          if (layer_map[i][ilace.j_right] == null) layer_map[i][ilace.j_right] = ilace.z_pos;
-        }
-      }
-
-      let top_left = warpLayerValueInRange(layer_map, ilace.z_pos, ilace.i_top, i_max, ilace.j_left);
-      if (top_left !== -1) {
-        for (let i = ilace.i_top; i < top_left; i++) {
-          if (layer_map[i][ilace.j_left] == null) layer_map[i][ilace.j_left] = ilace.z_pos;
-        }
-      }
-
-      let top_right = warpLayerValueInRange(layer_map, ilace.z_pos, ilace.i_top, i_max, ilace.j_right);
-      if (top_right !== -1) {
-        for (let i = ilace.i_top; i < top_right; i++) {
-          if (layer_map[i][ilace.j_right] == null) layer_map[i][ilace.j_right] = ilace.z_pos;
-        }
-      }
-
-    }
-  });
-
-  return layer_map;
-}
-
-export const addWeftLayerInterlacementsToMap = (layer_map: Array<Array<number>>, interlacements: Array<TopologyVtx>, max_ilace_width: number): Array<Array<number>> => {
-  max_ilace_width = 5;
-  //console.log("INTERLACEMENTS ", interlacements)
-  interlacements.forEach(ilace => {
-    let width = ilace.j_right - ilace.j_left;
-    if (width <= max_ilace_width) {
-
-      //span the interlaced wefts onto the same layer
-      for (let j = ilace.j_left; j <= ilace.j_right; j++) {
-        if (layer_map[ilace.i_bot][j] == null) layer_map[ilace.i_bot][j] = ilace.z_pos;
-        if (layer_map[ilace.i_top][j] == null) layer_map[ilace.i_top][j] = ilace.z_pos;
-
-      }
-
-      let j_min = Math.max(0, ilace.j_left - max_ilace_width);
-      let j_max = Math.min(ilace.j_right + max_ilace_width, layer_map[0].length - 1);
-
-      //reach out from all four corners and see if there is an interlacement with the same layer val in range
-      let bottom_left = weftLayerValueInRange(layer_map, ilace.z_pos, j_min, ilace.j_left, ilace.i_bot);
-
-      if (bottom_left !== -1) {
-        for (let j = bottom_left; j < ilace.j_left; j++) {
-          if (layer_map[ilace.i_bot][j] == null) layer_map[ilace.i_bot][j] = ilace.z_pos;
-        }
-      }
-
-
-
-      let top_left = weftLayerValueInRange(layer_map, ilace.z_pos, j_min, ilace.j_left, ilace.i_top);
-      if (top_left !== -1) {
-        for (let j = top_left; j < ilace.j_left; j++) {
-          if (layer_map[ilace.i_top][j] == null) layer_map[ilace.i_top][j] = ilace.z_pos;
-        }
-      }
-
-      let bottom_right = weftLayerValueInRange(layer_map, ilace.z_pos, ilace.j_right, j_max, ilace.i_bot);
-      if (bottom_right !== -1) {
-        for (let j = ilace.j_right; j <= bottom_right; j++) {
-          if (layer_map[ilace.i_bot][j] == null) layer_map[ilace.i_bot][j] = ilace.z_pos;
-        }
-      }
-
-      let top_right = weftLayerValueInRange(layer_map, ilace.z_pos, ilace.j_right, j_max, ilace.i_top);
-      if (top_right !== -1) {
-        for (let j = ilace.j_right; j <= top_right; j++) {
-          if (layer_map[ilace.i_top][j] == null) layer_map[ilace.i_top][j] = ilace.z_pos;
-        }
-      }
-    }
-  });
-
-  return layer_map;
-}
-
-
-/**
- * the layer map uses the interlacement data found in topo to understand which sets of wefts interlace on which sets of warps. It can use this information to understand if and how a layer will form. 
- * @param draft the current draft
- * @param topo the topology of all weft-wise crossings
- * @param sim the variables for the simulation
- * @returns 
- */
-export const createLayerMaps = (draft: Draft, topo: Array<TopologyVtx>, sim: SimulationVars):
-  Promise<LayerMaps> => {
-
-
-  const layer_maps = {
-    weft: [],
-    warp: []
-  };
-
-  //get a list of all the active layers in this toplogy (as absolute vals)
-  let active_layers: Array<number> = topo.reduce((acc, val) => {
-    let has_elem = acc.find(el => el == Math.abs(val.z_pos))
-    if (has_elem === undefined) {
-      return acc.concat(Math.abs(val.z_pos));
-    }
-    return acc;
-  }, []);
-
-
-  //get the largest magnitude layer (e.g. farthest from zero)
-  const max_layer = active_layers.reduce((acc, val) => {
-    if (val > acc) return val;
-    return acc;
-  }, 0);
-
-
-
-
-  return createWarpLayerMap(draft, topo, sim, active_layers, max_layer)
-    .then(warps => {
-      layer_maps.warp = warps;
-      return createWeftLayerMap(draft, topo, sim, warps)
-    }
-    ).then(wefts => {
-      layer_maps.weft = wefts;
-
-
-      //make sure every column in the warp map has at least one weft traveling on it in the weft map. 
-
-
-      return layer_maps;
-    });
-}
-
-/**
- * use the topology generated to create a map describing the relationship between warp and weft layers. assign each position along a warp with an associated layer. If a weft interlaces with that warp, it must do so on the warps associated layer
- */
-export const createWarpLayerMap = (draft: Draft, topo: Array<TopologyVtx>, sim: SimulationVars, active_layers: Array<number>, max_layer: number): Promise<Array<Array<number>>> => {
-
-  // console.log("TOPO ", topo)
-
-  //get the closest weft interlacements 
-  const max_height = topo.reduce((acc, val) => {
-    if ((val.i_top - val.i_bot) > acc) return (val.i_top - val.i_bot);
-    return acc;
-  }, 0);
-
-  //console.log("MAX HEIGHT ", max_height)
-
-  //start from the smallest width to the largest  
-  //push interlacements to the map in this order, not adding any additional. 
-
-  // //default all layers to null
-  let layer_map: Array<Array<number>> = [];
-  for (let i = 0; i < wefts(draft.drawdown); i++) {
-    layer_map.push([]);
-    for (let j = 0; j < warps(draft.drawdown); j++) {
-      layer_map[i][j] = null;
-    }
-  }
-
-  //go through layers 0 -> max and push interlacements to the layer map 
-  for (let i = 1; i <= max_height; i++) {
-    let layer_ilace = topo.filter(ilace => ilace.i_top - ilace.i_bot == i);
-    // console.log("LAYER ILACE ", i, layer_ilace);
-    layer_map = addWarpLayerInterlacementsToMap(layer_map, layer_ilace, sim.max_interlacement_width, sim.max_interlacement_height);
-
-  }
-
-  //console.log("LAYER MAP AFTER ILACES ", layer_map)
-
-
-
-
-  //now scan through the layer map. Count the number of consecutive layer values on a warp. 
-  //if it is larger than the layer threshold, keep them
-  //if not, 
-  for (let j = 0; j < warps(draft.drawdown); j++) {
-
-    let col = layer_map.reduce((acc, el) => {
-      return acc.concat(el[j]);
-    }, []);
-
-    //find all of the non null vals
-    let vals = [];
-
-    col.forEach((el, ndx) => {
-      if (el !== null) vals.push(ndx);
-    });
-
-
-    if (vals.length == 0) {
-      //find the first non-zero val to the columns to the right 
-      //fill this with those columns 
-    } else {
-
-      vals.forEach(val => {
-        //fill downwards
-        let found = false;
-        for (let i = val - 1; i >= 0 && !found; i--) {
-          if (layer_map[i][j] == null) layer_map[i][j] = layer_map[val][j];
-          else found = true;
-        };
-
-        //fill upwards
-        found = false;
-        for (let i = val + 1; i < col.length && !found; i++) {
-          if (layer_map[i][j] == null) layer_map[i][j] = layer_map[val][j];
-          else found = true;
-        };
-
-
-      });
-
-
-    }
-
-
-    // }
-
-  }
-
-
-  /**
-   * look through rows, if you hit a null value in a row, look to the preview 
-   * values it had just saw, and replace this value with those values. 
-   */
-  let prior_pattern = [];
-  let needs_value = [];
-  let starting_pattern = [];
-  let count_null = 0;
-  let has_pattern = false;
-  for (let i = 0; i < wefts(draft.drawdown); i++) {
-    prior_pattern = [];
-    needs_value = [];
-    starting_pattern = [];
-    count_null = 0;
-    has_pattern = false;
-    for (let j = 0; j < warps(draft.drawdown); j++) {
-      if (layer_map[i][j] !== null) {
-        if (count_null > 0) prior_pattern = [];
-        prior_pattern.push(layer_map[i][j]);
-        count_null = 0;
-      } else {
-
-        if (prior_pattern.length == 0) needs_value.push(j);
-        else {
-          if (!has_pattern) starting_pattern = prior_pattern.slice();
-          has_pattern = true;
-          layer_map[i][j] = prior_pattern[count_null % prior_pattern.length];
-        }
-        count_null++;
-      }
-    }
-
-    for (let n = 0; n < needs_value.length; n++) {
-      layer_map[i][needs_value[n]] = starting_pattern[n % starting_pattern.length];
-    }
-
-
-
-
-  }
-
-
-  layer_map = layer_map.map((warp) => {
-    return warp.map(el => {
-      if (el === undefined) {
-        return 0;
-      } else {
-        return el;
-      }
-    })
-  })
-
-
-  //now clean up 
-  //console.log("WARP LAYER MAP", layer_map)
-  return Promise.resolve(layer_map);
-
-}
-
-/**
- * use the topology generated to create a map describing the relationship between warp and weft layers. assign each position along a warp with an associated layer. If a weft interlaces with that warp, it must do so on the warps associated layer
- * @param draft the draft to draw
- * @param topo the generated topography
- * @param  power if you see an interlacement at i, j, how far should its "power" extend to neighbors. 
- * @param layer_threshold how many consecutive layer assignments need to be seen in order to call it a layer
- * @returns 
- */
-export const createWeftLayerMap = (draft: Draft, topo: Array<TopologyVtx>, sim: SimulationVars, warp_layer_map: Array<Array<number>>): Promise<Array<Array<number>>> => {
-
-  //get the closest weft interlacements 
-  const max_width = topo.reduce((acc, val) => {
-    if ((val.j_right - val.j_left) > acc) return (val.i_top - val.i_bot);
-    return acc;
-  }, 0);
-
-
-  //default all layers to null
-  let layer_map: Array<Array<number>> = [];
-  for (let i = 0; i < wefts(draft.drawdown); i++) {
-    layer_map.push([]);
-    for (let j = 0; j < warps(draft.drawdown); j++) {
-      layer_map[i][j] = null;
-    }
-  }
-
-  //go through layers 0 -> max and push interlacements to the layer map 
-  // for(let j = 1; j <= max_width; j++){
-  //   console.log("ADDING INTERLACEMENTS OF SIZE ", j)
-  //   let layer_ilace = topo.filter(ilace => ilace.j_right-ilace.j_left == j);
-  //   layer_map = addWeftLayerInterlacementsToMap(layer_map, layer_ilace, sim.max_interlacement_width); 
-  // }
-
-
-
-  let null_set;
-  for (let i = 0; i < wefts(draft.drawdown); i++) {
-    null_set = [];
-    for (let j = 0; j < warps(draft.drawdown); j++) {
-
-      if (layer_map[i][j] == null) null_set.push(j);
-      else if (null_set.length > 0) {
-
-        let layers = inferWeftNullLayers(i, draft, null_set, layer_map, warp_layer_map);
-
-        for (let n = 0; n < null_set.length; n++) {
-          layer_map[i][null_set[n]] = layers[n];
-        }
-        null_set = [];
-      }
-    }
-
-
-    //catch any last nulls left over at the end of the weft
-    let layers = inferWeftNullLayers(i, draft, null_set, layer_map, warp_layer_map);
-    for (let n = 0; n < null_set.length; n++) {
-      layer_map[i][null_set[n]] = layers[n];
-    }
-
-
-
-
-  }
-
-
-
-
-
-  /**
-   * look through columns, if you hit a null value in a column, look to the preview 
-   * values it had just saw, and replace this value with those values. 
-   */
-  // let prior_pattern = [];
-  // let needs_value = [];
-  // let starting_pattern = [];
-  // let count_null = 0;
-  // let has_pattern = false;
-  // for(let j = 0; j < warps(draft.drawdown); j++){
-  //   prior_pattern = [];
-  //   needs_value = [];
-  //   starting_pattern = [];
-  //   count_null = 0;
-  //   has_pattern = false;
-  //   for(let i = 0; i < wefts(draft.drawdown); i++){
-  //     if(layer_map[i][j] !== null){
-  //       if(count_null > 0) prior_pattern = [];
-  //       prior_pattern.push(layer_map[i][j]);
-  //       count_null = 0;
-  //     }else{
-
-  //       if(prior_pattern.length == 0) needs_value.push(i);
-  //       else{
-  //         if(!has_pattern) starting_pattern = prior_pattern.slice();
-  //         has_pattern = true;
-  //         layer_map[i][j] = prior_pattern[count_null%prior_pattern.length];
-  //       } 
-  //       count_null++;
-  //     }
-  //   }
-
-  // if(starting_pattern.length > 0){
-  //   for(let n = 0; n < needs_value.length; n++){
-  //     console.log("STARTING PATTERN ON ", needs_value[n], j, layer_map.length, starting_pattern, n%starting_pattern.length)
-  //     layer_map[needs_value[n]][j] = starting_pattern[n%starting_pattern.length];
-  //   }
-  // }else{
-  //   //there are absolutely no values on this column, what to do?
-  // }
-  //}
-
-
-  //IFF THERE IS STILL UNDEFINED, SET THEM TO 0
-  layer_map = layer_map.map((weft) => {
-    return weft.map(el => {
-      if (el === undefined) {
-        return 0;
-      } else {
-        return el;
-      }
-    })
-  })
-
-  //console.log("WEFT LAYER MAP", layer_map)
-  return Promise.resolve(layer_map);
-
-}
-
-
-/**
- * given a single weft pick, this function will pull out the first group of draft cells that interlace (e.g. have one over and one under associated with the same layer) and then return those values to the function that called it. 
- * @param i the row
- * @param null_set the current set of values on the weft that are null
- * @param draft the draft we are considering
- * @param warp_map the current map of warps to layers
- * @returns an array of layer values found between an over and under
- */
-export const extractWeftLayerGroups = (i: number, null_set: Array<number>, draft: Draft, warp_map: Array<Array<number>>): Array<number> => {
-
-  let observed: Array<{ id: number, under: boolean, over: boolean }> = [];
-  let layer_vals = [];
-
-  //iterate through the null set
-  for (let n = 0; n < null_set.length; n++) {
-
-    let j = null_set[n];
-    let warp_layer = warp_map[i][j];
-    let el = observed.find(el => el.id == warp_layer);
-
-    // console.log("CHECKING ", i, j, el, warp_layer, getCellValue(draft.drawdown[i][j]));
-
-    if (getCellValue(draft.drawdown[i][j]) == true) {
-      if (el !== undefined) el.under = true;
-      else observed.push({ id: warp_layer, under: true, over: false })
-    } else {
-      if (el !== undefined) el.over = true;
-      else observed.push({ id: warp_layer, under: false, over: true })
-    }
-
-
-
-    //check to see if there is an over and an under
-    let found = observed.find(el => el.over && el.under);
-    if (found !== undefined) {
-      //write everything prior to the current n to be the 
-      for (let l = 0; l <= n; l++) {
-        layer_vals.push(found.id);
-      }
-      return layer_vals;
-    }
-  }
-  return [];
-}
-
-/**
- * try to guess the layer for the weft based on the draft and the warp layer assignments
- * @param i 
- * @param draft 
- * @param null_set 
- * @param weft_map 
- * @param warp_map 
- * @returns 
- */
-export const inferWeftNullLayers = (i: number, draft: Draft, null_set: Array<number>, weft_map: Array<Array<number>>, warp_map: Array<Array<number>>): Array<number> => {
-
-  let all_vals = [];
-
-  while (null_set.length > 0) {
-    let layer_vals = extractWeftLayerGroups(i, null_set, draft, warp_map);
-
-    if (layer_vals.length <= 1) {
-      null_set = [];
-    } else {
-      all_vals = all_vals.concat(layer_vals)
-      null_set = null_set.slice(layer_vals.length - 1);
-    }
-
-  }
-  return all_vals;
-}
-
-/**
- * this function calculates proximity to the place in which the interlacement crosses and then attracts the other interlacements towards it position as a function of their distance. 
- * @param inlacement_j 
- * @param interlacement_y 
- * @param cur 
- * @param mm_per_warp 
- */
-export const updateY = (interlacement_j: number, interlacement_y: number, cur: YarnVertex, mm_per_warp: number) => {
-
-  //calc distance in mm. the closer to the interlacement, the stronger this vertex will be pulled twoards ilace_y
-  let dist = (interlacement_j - cur.j) * mm_per_warp;
-
-  //use the function 1 / 2^x/2 to calucate the force. 
-  // let displacement_factor = 1 / Math.pow(2, dist/10);
-  let displacement_factor = 1;
-  let y_dist = interlacement_y - cur.y;
-
-  let new_y = cur.y + (y_dist * displacement_factor);
-
-  // console.log("DIST, DISP, YDIST, NEWY", dist, displacement_factor, y_dist, cur.y, new_y, interlacement_y);
-  return new_y;
-
-
-}
-
-// /**
-//  * given an distance range in mm, returns all the vtxs in that range. 
-//  * @param weft 
-//  * @param x_min 
-//  * @param x_max 
-//  * @returns 
-//  */
-// export const getVtxsInRange = (weft: Array<YarnVertex>, x_min: number, x_max:number) => {
-
-//     let range = [];
-//    for(let x = 0; x < weft.length; x++){
-//       let vtx = weft[x]; 
-//       if(vtx.x >= x_min) range.push(vtx);
-//       if(vtx.x >= x_max) return range;
-//    }
-// }
-
-
-export const setBaselineYForWeft = (i: number, weft: Array<YarnVertex>, layer_maps: LayerMaps, draft: Draft, prior_wefts: Array<Array<YarnVertex>>, sim: SimulationVars): Array<YarnVertex> => {
-  let updated_weft = [];
-  let weft_diam = sim.ms.getDiameter(draft.rowShuttleMapping[i]);
-
-  //find the y value of the same layer
-  weft.forEach((vtx) => {
-
-    let this_layer = layer_maps.weft[vtx.i][vtx.j];
-    let layer_ndx_map = layer_maps.weft
-      .filter((el, ndx) => ndx < i)
-      .map(el => el[vtx.j])
-      .map((el, ndx) => { return { layer: el, i: ndx, j: vtx.j } });
-
-    let prev_wefts_on_layer = layer_ndx_map.filter(el => el.layer == this_layer);
-    let prev_weft = null;
-    let layer_y = { y: 0, i: -1 };
-
-
-    if (prev_wefts_on_layer.length > 0) {
-      prev_weft = prev_wefts_on_layer.slice().pop();
-      let prev_weft_vtx = prior_wefts[prev_weft.i].find(el => el.j == vtx.j);
-      if (prev_weft_vtx !== undefined)
-        layer_y = { y: prev_weft_vtx.y, i: prev_weft.i };
-    }
-
-    //compare the last layer y to the highest y in the set
-    // let non_layer_map = layer_ndx_map.filter(el => el.layer !== this_layer);
-    let non_layer_map = layer_ndx_map;
-    let max_y = non_layer_map.reduce((acc, el) => {
-      let max_in_weft = prior_wefts[el.i].reduce((subacc, vtx) => {
-        if (vtx.y > subacc) return vtx.y;
-        return subacc;
-      }, 0);
-
-      if (max_in_weft >= acc.y) return { y: max_in_weft, i: el.i };
-      return acc;
-    }, { y: 0, i: -1 });
-
-    let use_y = 0;
-
-    if (max_y.i !== -1 || (max_y.i == -1 && non_layer_map.length == 0)) {
-      //if the layer_y is within acceptable distance from max
-      let diff = (max_y.y + sim.ms.getDiameter(draft.rowShuttleMapping[max_y.i]) / 2) - (layer_y.y + weft_diam / 2);
-      if (layer_y.i == -1 || diff > weft_diam) {
-        use_y = max_y.y + sim.ms.getDiameter(draft.rowShuttleMapping[max_y.i]) / 2 - weft_diam;
-      }
-      else {
-        //make sure the new y isn't too far away
-        if (Math.ceil(max_y.y - layer_y.y) >= weft_diam) {
-          layer_y.y = max_y.y - weft_diam;
-        }
-
-        use_y = layer_y.y + sim.ms.getDiameter(draft.rowShuttleMapping[layer_y.i]) / 2 + weft_diam / 2;
-
-      }
-
-    }
-
-    //TECHNICALLY - WE SHOULD UPDATE WARP VTXS TOO!
-    updated_weft.push({
-      x: vtx.x,
-      y: use_y,
-      z: vtx.z,
-      i: vtx.i,
-      j: vtx.j
-    })
-  })
-
-  return updated_weft;
-}
-
-/**
- * an interlacement pushes two wefts away from eachother by an amount that depends on the sett, yarn thickness, and strength of the interlacement. This funciton radiates, and dissapates that force along the weft to ensure a smooth gradual change in position that is never out of range
- * @param weft the weft vertexes
- * @param deflections a copy of vertexes, but storing the already occured deflections
- * @param x the position of the interlacement
- * @param i the weft id
- * @param strength the strength of the interlacement (closer interlacements are stronger)
- * @param max_displacement the maximum amont of distance, in y, that this weft can be displaced
- * @param simvars the simulation variables. 
- * @returns 
- */
-export const radiateInterlacementForce = (weft: Array<YarnVertex>, deflections: Array<Deflection>, x: number, i: number, strength: number, max_displacement, simvars: SimulationVars): Array<Deflection> => {
-
-  let in_range = weft.map((el, ndx) => {
-    if (el.x >= x - simvars.radius && el.x <= x + simvars.radius) return ndx;
-    else return -1;
-  });
-
-  in_range.filter(el => el !== -1).forEach(ndx => {
-    deflections[ndx].dy += strength * max_displacement;
-    if (deflections[ndx].dy > max_displacement) deflections[ndx].dy = max_displacement;
-  })
-
-  return deflections;
-
-}
-
-/**
- * given the distance of this interlacement in mm, this function figures out the strength factor. Which will determine how much to push up this warp as  function of distance. Smaller widths get pushed up harder than farther widths. Max is 1 - min is very close to zero.
- * @param dist 
- */
-export const calcStrength = (dist: number): number => {
-  return 1 / dist;
-}
-
-/**
- * how far can a strong interlacement push a weft upward in the cloth. This depends on the sett of the cloth and density of the yarns. How much distance is between these yarns? Returns the displacement in mm. 
- * @param sett_width - how many mm between the two yarns in question
- * @param max_warp_thickness - how thick is the warp at this interlacement.
- * @returns 
- */
-export const calcMaxDisplacement = (sett_width: number, max_warp_thickness: number): number => {
-  return max_warp_thickness / sett_width;
-}
-
-export const getPrevWarpOnLayer = (i: number, j: number, layermaps: LayerMaps): number => {
-
-  for (let ndx = j; ndx >= 0; ndx--) {
-    if (layermaps.weft[i][j] == layermaps.weft[i][ndx]) return ndx;
-  }
-  return -1;
-
-}
-
-export const getNextWarpOnLayer = (i: number, j: number, layermaps: LayerMaps): number => {
-
-  for (let ndx = j; ndx < layermaps.weft[0].length; ndx++) {
-    if (layermaps.weft[i][j] == layermaps.weft[i][ndx]) return ndx;
-  }
-  return -1;
-
-}
-
-/**
-* how far can a strong interlacement push a weft upward in the cloth. This depends on the sett of the cloth and density of the yarns. How much distance is between these yarns? Returns the displacement in mm. 
-* @param sett_width - how many mm between the two yarns in question
-* @param max_warp_thickness - how thick is the warp at this interlacement.
-* @returns 
-*/
-export const calcFloatDistance = (i: number, j: number, float: YarnFloat, weft: Array<YarnVertex>, layer_maps: LayerMaps, draft: Draft, sim: SimulationVars): number => {
-
-  let left_warp_id = getPrevWarpOnLayer(i, float.start, layer_maps);
-  let right_warp_id = float.end;
-
-  if (j == left_warp_id || j == right_warp_id) return 0;
-
-
-
-
-
-  let start_x = sim.warp_spacing * left_warp_id;
-  let end_x = sim.warp_spacing * right_warp_id;
-  let width = end_x - start_x;
-
-  let half_width = width / 2;
-
-  let jx = (j * sim.warp_spacing) - start_x;
-  let distance_from_center = (jx <= half_width) ? half_width - jx : jx - half_width;
-
-  if (half_width == 0) return 0;
-
-  let closeness_ratio = 1 - (distance_from_center / half_width);
-  // console.log("WIDTH / DISTANCE ", distance_from_center, half_width, closeness_ratio)
-  //should be 1 when the distance is 0;
-
-
-  //less x_distance, stonger repel. 
-  // repel depends on length; 
-  let max_dx = Math.min(8, width / 10);
-  let pcent = Math.sin(Math.PI / 2 * closeness_ratio)
-
-
-
-
-  //let positioned_dx = (float.heddle) ? max_dx*pcent : -max_dx*pcent; 
-  let positioned_dx = (float.heddle) ? -pcent * max_dx : pcent * max_dx;
-  // console.log("POSITINED DX ", positioned_dx)
-
-  return positioned_dx;
-}
-
-export const getFirstWarpAssociatedWithLayer = (i: number, layerid: number, layermaps: LayerMaps): number => {
-
-  for (let j = 0; j < layermaps.weft[i].length; j++) {
-    if (layermaps.warp[i][j] == layerid) return j;
-  }
-  return -1;
-
-}
-
-
-/**
- * convert a draft row into an array of floats. This is an alternate representation of the same data that focuses on how long the float values are and where they start, rather than each cell individually. Teh structure stores teh start of the float - the first cell that reresents the value across the float. The end value represents the cell upon which the value changes. 
- * @param i 
- * @param draft 
- * @param layer_maps 
- * @returns 
- */
-export const getWeftAsFloat = (i: number, draft: Draft, layer_maps: LayerMaps): Array<YarnFloat> => {
-
-  if (draft.drawdown[i].length == 0) return [];
-
-  let start_id = getFirstWarpAssociatedWithLayer(i, layer_maps.weft[i][0], layer_maps);
-  if (start_id == -1) start_id = 0;
-
-  let floats: Array<YarnFloat> = [{
-    heddle: getCellValue(draft.drawdown[i][start_id]),
-    end: start_id,
-    start: 0,
-    layer: layer_maps.weft[i][start_id],
-  }];
-
-  let last_float = floats[0];
-
-
-  for (let j = 1; j < warps(draft.drawdown); j++) {
-    if (layer_maps.warp[i][j] == layer_maps.weft[i][j]) {
-
-      last_float.end = j;
-
-      if (getCellValue(draft.drawdown[i][j]) != last_float.heddle || layer_maps.weft[i][j] != last_float.layer) {
-        last_float = {
-          heddle: getCellValue(draft.drawdown[i][j]),
-          start: j,
-          end: j,
-          layer: layer_maps.weft[i][j]
-        }
-
-        floats.push(last_float);
-      }
-    }
-  }
 
   return floats;
 
+
 }
 
-
 /**
- * position the weft on top of the previous weft (on the corresponding layers) and then repositing to account for the physics of an interlacement htat pushes in different directions. 
+ * uses the contact neighborhoods on this column to get a list of floats. Some floats may be out of range (> wefts) so that they can readily apply to the edges relationships
  * @param i 
- * @param weft 
- * @param topo 
- * @param layer_maps 
- * @param draft 
- * @param prior_wefts 
- * @param sim 
+ * @param warps 
+ * @param cns 
  * @returns 
  */
-export const packWeft = (i: number, weft: Array<YarnVertex>, topo: Array<TopologyVtx>, layer_maps: LayerMaps, draft: Draft, prior_wefts: Array<Array<YarnVertex>>, sim: SimulationVars): Array<YarnVertex> => {
+export const getColAsFloats = (j: number, wefts: number, warps: number, cns: Array<ContactNeighborhood>): Array<CNFloat> => {
 
-  //get the interlacements that have the current weft as the top value
-  let ilaces = topo.filter(el => el.i_top === i);
-  let ilace_coords = [];
-
-  weft = setBaselineYForWeft(i, weft, layer_maps, draft, prior_wefts, sim);
-
-  let floats: Array<YarnFloat> = getWeftAsFloat(i, draft, layer_maps)
-  let deflections: Array<Deflection> = weft.map(vtx => { return { i: vtx.i, j: vtx.j, dx: 0, dy: 0, dz: 0 } });
-
-  // console.log("FLOATS ON ", i, floats, warps(draft.drawdown))
-  ilaces.forEach(ilace => {
-
-    let width = (ilace.j_right - ilace.j_left) * sim.warp_spacing;
-    let strength = calcStrength(width);
-
-    let current_left_ndx: number = weft.findIndex(el => el.j == ilace.j_left);
-    if (current_left_ndx == -1) return;
-    let current_left: YarnVertex = weft[current_left_ndx];
-
-    let current_right_ndx: number = weft.findIndex(el => el.j == ilace.j_right);
-    if (current_right_ndx == -1) return;
-    let current_right: YarnVertex = weft[current_right_ndx];
+  let floats = [];
+  let lefts = cns.filter(el => el.node_type == 'ACN' && el.ndx.j == j && el.ndx.id == 2);
+  let rights = cns.filter(el => el.node_type == 'ACN' && el.ndx.j == j && el.ndx.id == 3);
+  if (lefts.length !== rights.length) console.error("THIS COL HAS AN UNEVEN NUMBER OF ACNS")
 
 
-    let center_x = current_right.x + (current_right.x - current_left.x) / 2;
-    ilace_coords.push(center_x);
-    let left_warp_diam = sim.ms.getDiameter(draft.colShuttleMapping[ilace.j_left]);
-    let right_warp_diam = sim.ms.getDiameter(draft.colShuttleMapping[ilace.j_right]);
-    let between_yarns_width = width - (left_warp_diam / 2 + right_warp_diam / 2);
-    if (between_yarns_width < 0) between_yarns_width = 0.1;
-    let max_displacement = calcMaxDisplacement(between_yarns_width, Math.max(left_warp_diam, right_warp_diam));
+  lefts.forEach(left => {
+    let found = false;
 
-    deflections = radiateInterlacementForce(weft, deflections, center_x, i, strength, max_displacement, sim);
-
-  });
-
-
-  floats.forEach(float => {
-
-    for (let f = float.start; f <= float.end; f++) {
-      let deflection_id = deflections.findIndex(el => el.j == f);
-      if (deflection_id !== -1) deflections[deflection_id].dz = calcFloatDistance(i, f, float, weft, layer_maps, draft, sim);
+    for (let i = left.ndx.i; i < wefts && !found; i++) {
+      let right = rights.find(el => el.ndx.i == i);
+      if (right !== undefined) {
+        found = true;
+        floats.push({
+          left: left.ndx,
+          right: right.ndx,
+          edge: false,
+          face: left.face
+        })
+      }
     }
-  });
 
-  weft.forEach((vtx, ndx) => {
-    vtx.y += deflections[ndx].dy;
-    vtx.z += deflections[ndx].dz;
+    if (!found) {
+      let right = rights.shift();
+      floats.push({
+        left: left.ndx,
+        right: { j: right.ndx.j, i: wefts + right.ndx.i, id: 3 }, //get the first in the list
+        edge: false,
+        face: left.face
+      })
+    }
+
+
   })
 
+  return floats;
 
 
-
-
-
-  return weft;
 }
 
+
+
+/**
+ * used in support of determining how floats stack, this function gets a list of id's that are attached to a given float. Since more than one float may be attached, this takes that list of ids and returns the number of floats it represents. 
+ * @param i 
+ * @param warps 
+ * @param face 
+ * @param segments the list of indicies
+ * @param cns 
+ * @returns 
+ */
+const extractFloat = (i: number, warps: number, face: boolean, segments: Array<number>, cns: Array<ContactNeighborhood>): { float: CNFloat, last: number } => {
+
+  //walk to the first ACN
+  let start = null;
+  let end = null;
+
+  for (let s = 0; s < segments.length; s++) {
+
+    //check the left side
+    let adj_j = mod(segments[s], warps);
+    if (getNodeType({ i, j: adj_j, id: 0 }, warps, cns) == 'ACN') {
+      if (start == null) {
+        start = { i, j: segments[s], id: 0 }
+      }
+    }
+    //check the right side
+    if (getNodeType({ i, j: adj_j, id: 1 }, warps, cns) == 'ACN') {
+      if (start !== null) {
+        end = { i, j: segments[s], id: 1 };
+        let edge = (end.j >= warps - 1 || start.j <= 0);
+        return { float: { left: start, right: end, face, edge }, last: segments[s] }
+      }
+    }
+
+  }
+  //got to the end and there was no closing this might mean we have reached the end of the row. 
+  return { float: null, last: segments.length }
+}
+
+/**
+ * given a point, this function returns the float upon which this point sits
+ * @param i 
+ * @param j 
+ */
+const getWarpFloat = (i: number, j: number, wefts: number, warps: number, cns: Array<ContactNeighborhood>): CNFloat => {
+  let left = null;
+  let count = 0;
+
+  //confirm this is a weft float and not an unset 
+  let face = getFace({ i, j, id: 0 }, warps, cns);
+  if (face == null || face == false) return null;
+
+
+  //walk up
+  while (left == null && count < wefts) {
+    let type = getNodeType({ i, j, id: 2 }, warps, cns);
+    if (type == 'ACN') {
+      left = { i, j, id: 2 };
+    } else {
+      i = strictMod(i - 1, wefts);
+    }
+    count++;
+  }
+
+  //walk down
+  let right = null;
+  count = 0;
+  while (right == null && count < warps) {
+    let type = getNodeType({ i, j, id: 3 }, warps, cns);
+    if (type == 'ACN') {
+      right = { i, j, id: 3 };
+    } else {
+      i = strictMod(i + 1, wefts);
+    }
+    count++;
+  }
+
+  if (left == null || right == null) return null;
+
+  return {
+    left, right, edge: false, face: true
+  }
+
+}
+
+
+/**
+ * given a point, this function returns the float upon which this point sits
+ * @param i 
+ * @param j 
+ */
+const getWeftFloat = (i: number, j: number, warps: number, cns: Array<ContactNeighborhood>): CNFloat => {
+  let left = null;
+  let count = 0;
+  let j_adj = j;
+
+  //confirm this is a weft float and not an unset 
+  let face = getFace({ i, j, id: 0 }, warps, cns);
+  if (face == null || face == true) return null;
+
+  //walk left
+  while (left == null && count < warps) {
+    let type = getNodeType({ i, j: j_adj, id: 0 }, warps, cns);
+    if (type == 'ACN') {
+      left = { i, j: j_adj, id: 0 };
+    } else {
+      j_adj = strictMod(j_adj - 1, warps);
+    }
+    count++;
+  }
+
+  //walk right
+  let right = null;
+  count = 0;
+  j_adj = j;
+  while (right == null && count < warps) {
+    let type = getNodeType({ i, j: j_adj, id: 1 }, warps, cns);
+    if (type == 'ACN') {
+      right = { i, j: j_adj, id: 1 };
+    } else {
+      j_adj = strictMod(j_adj + 1, warps);
+    }
+    count++;
+  }
+
+  return {
+    left, right, edge: false, face: false
+  }
+
+}
+
+const getWeftFloatLength = (f: CNFloat, warps: number): number => {
+  if (f.right.j >= f.left.j) return f.right.j - f.left.j;
+  else return warps - f.left.j + f.right.j;
+}
+
+const getWarpFloatLength = (f: CNFloat, wefts: number): number => {
+  if (f.right.i >= f.left.i) return f.right.i - f.left.i;
+  else return wefts - f.left.i + f.right.i;
+}
 
 
 
 
 /**
- * converts a topology diagram to a list of vertexes to draw. It only draws key interlacements to the list
- * @param draft 
- * @param topo 
- * @param layer_map 
- * @param sim 
+ * get all the weft-wise floats with the same face value that share an edge with the input float that reside on the row indicated by i. Given that if we are assuming repeats, some indexes might be beyond or not actually existing in the cn list
+ * @param i 
+ * @param warps 
+ * @param float 
+ * @param cns 
  * @returns 
  */
-export const translateTopologyToPoints = (draft: Draft, topo: Array<TopologyVtx>, layer_maps: { warp: Array<Array<number>>, weft: Array<Array<number>> }, sim: SimulationVars): Promise<VertexMaps> => {
-
-  let weft_vtx: Array<Array<YarnVertex>> = [];
-  let warp_vtx: Array<Array<YarnVertex>> = [];
-
+const getAttachedFloats = (i: number, wefts: number, warps: number, float: CNFloat, cns: Array<ContactNeighborhood>): Array<CNFloat> => {
+  let attached = [];
+  let segments = [];
 
 
-  for (let i = 0; i < wefts(draft.drawdown); i++) {
-    weft_vtx.push([]);
-    let weft = insertWeft(draft, [], i, sim, layer_maps);
-    let res = packWeft(i, weft.slice(), topo, layer_maps, draft, weft_vtx, sim);
-    weft_vtx[i] = res.slice();
 
-  }
+  if (i < 0) i = strictMod(i, wefts);
 
-  for (let j = 0; j < warps(draft.drawdown); j++) {
-    warp_vtx.push([]);
-    //get every interlacement involving this weft
-    const ilaces = topo.filter(el => el.j_left == j || el.j_right == j);
-    warp_vtx = insertWarp(draft, ilaces, warp_vtx, weft_vtx, j, sim, layer_maps.warp).slice();
+
+  //walk along the input float and push any lower neighbors that match face
+  for (let j = float.left.j; j <= float.right.j; j++) {
+    let adj_j = strictMod(j, warps); //protect when float ends are out of range
+    let face = getFace({ i, j: adj_j, id: 0 }, warps, cns);
+    if (float.face !== null && float.face == face) {
+      segments.push(j)
+    }
   }
 
 
-  return Promise.resolve({ warps: warp_vtx, wefts: weft_vtx });
-}
+  if (segments.length == 0) return [];
 
-export const sortInterlacementsOnWarp = (ilaces: Array<TopologyVtx>): Array<TopologyVtx> => {
+  let left_edge = segments[0];
+  let right_edge = segments[segments.length - 1]
 
-  let unsorted = ilaces.slice();
-  let sorted = [];
 
-  while (unsorted.length > 1) {
-    let bottommost = unsorted.reduce((acc, ilace, ndx) => {
-      if (ilace.i_bot < acc.val) return { ndx: ndx, val: ilace.i_bot };
-      return acc;
-    }, { ndx: -1, val: 100000000 });
-
-    let arr_removed = unsorted.splice(bottommost.ndx, 1);
-    sorted.push(arr_removed[0]);
-
+  //walk left to find attached
+  let edge_found = false;
+  for (let count = 1; count < warps && !edge_found; count++) {
+    let adj_j = strictMod((left_edge - count), warps);
+    let face = getFace({ i, j: adj_j, id: 0 }, warps, cns);
+    if (float.face !== null && float.face == face) {
+      segments.unshift((left_edge - count))
+    } else {
+      edge_found = true;
+    }
   }
 
-  sorted = sorted.concat(unsorted);
-  return sorted;
-}
 
+  //walk right to find attached
+  edge_found = false;
+  for (let count = 1; count < warps && !edge_found; count++) {
+    let adj_j = strictMod((right_edge + count), warps);
+    let face = getFace({ i, j: adj_j, id: 0 }, warps, cns);
+    if (float.face !== null && float.face == face) {
+      segments.push(right_edge + count);
 
-export const sortInterlacementsOnWeft = (ilaces: Array<TopologyVtx>): Array<TopologyVtx> => {
-
-  let unsorted = ilaces.slice();
-  let sorted = [];
-
-  while (unsorted.length > 1) {
-    let leftmost = unsorted.reduce((acc, ilace, ndx) => {
-      if (ilace.j_left < acc.val) return { ndx: ndx, val: ilace.j_left };
-      return acc;
-    }, { ndx: -1, val: 100000000 });
-
-    let arr_removed = unsorted.splice(leftmost.ndx, 1);
-    sorted.push(arr_removed[0]);
-
+    } else {
+      edge_found = true;
+    }
   }
 
-  sorted = sorted.concat(unsorted);
-  return sorted;
+  //SEGMENTS NOW CONTAINS A LIST OF ALL the Cells of the same face color, the left most and right most CNS in these cells should be the edges. This list may be empty if there was only the opposite color attached. 
+
+  let loops = 0;
+  while (segments.length > 0 && loops < 20) {
+    loops++;
+    let extracted = extractFloat(i, warps, float.face, segments, cns);
+    if (extracted.float !== null) {
+      attached.push(extracted.float)
+    }
+
+    segments = segments.filter(el => el > extracted.last);
+  }
+
+  return attached;
 }
 
+/**
+ * Given two floats that lie above each other on the draft, this function determines the relation ship of the float and the floats on previous rows. 
+ * @param float 
+ * @param attached 
+ * @returns 
+ */
+const getWarpwiseRelationship = (float: CNFloat, attached: Array<CNFloat>): Array<string> => {
 
+  let res: Array<string> = attached.reduce((acc, el) => {
+    let top_length = float.right.j - float.left.j;
+    let bottom_length = el.right.j - el.left.j;
 
-// export const calcFloatHeightAtPosition = (pos: number, total_float_len: number, max_float: number) : number => {
+    if (float.right.j > el.right.j && float.left.j > el.left.j) acc.push("BUILD");
+    else if (float.right.j < el.right.j && float.left.j < el.left.j) acc.push("BUILD");
+    else if (float.right.j == el.right.j && float.left.j == el.left.j) acc.push("STACK");
+    else if (float.left.j == el.left.j || float.right.j == el.right.j) {
+      if (top_length > bottom_length) {
+        if (float.face == false) acc.push("SLIDE-OVER")
+        else acc.push("SLIDE-UNDER")
+      } else {
+        if (float.face == false) acc.push("SLIDE-UNDER")
+        else acc.push("SLIDE-OVER")
+      }
+    }
 
-//   let radians = pos/total_float_len * Math.PI;
-//   return max_float * Math.sin(radians);
+    else if (float.left.j < el.left.j && float.right.j > el.right.j) {
+      if (float.face == false) acc.push("SLIDE-OVER");
+      else acc.push("SLIDE-UNDER");
+    }
 
-// }
+    else if (float.left.j > el.left.j && float.right.j < el.right.j) {
+      if (float.face == false) acc.push("SLIDE-UNDER");
+      else acc.push("SLIDE-OVER");
+    } else {
+      console.error(" UNACCOUNTED FOR RELATIONSHIP FOUND BETWEEN ", float, el)
+    }
+    return acc;
+  }, []);
 
-export const getWeftOrientationVector = (draft: Draft, i: number, j: number): number => {
-  return (draft.drawdown[i][j].is_set && draft.drawdown[i][j].is_up) ? -1 : 1;
-
-}
-
-
-export const insertWarp = (draft: Draft, unsorted_ilaces: Array<TopologyVtx>, warp_vtxs: Array<Array<YarnVertex>>, weft_vtxs: Array<Array<YarnVertex>>, j: number, sim: SimulationVars, layer_map: Array<Array<number>>): Array<Array<YarnVertex>> => {
-
-  let ilaces = sortInterlacementsOnWarp(unsorted_ilaces);
-  let diam = sim.ms.getDiameter(draft.colShuttleMapping[j]);
-  let res = processWarpInterlacement(draft, j, diam, ilaces.slice(), warp_vtxs, weft_vtxs, [], sim, layer_map);
 
   return res;
 
+
+
+
+
+
+
 }
 
 
 /**
- * given all the interlacements involving this weft, this function returns the list of vertecies that will be uused to draw that weft on screen. 
- * @param draft 
- * @param unsorted_ilaces 
- * @param weft_vtx 
+ * used when parsing the CN graph, this function looks at the next cell in some direction to determine if it should assign ACNs to any of it's edges. 
  * @param i 
- * @param sim 
- * @param layer_map 
+ * @param j 
+ * @param wefts 
+ * @param warps 
+ * @param layer 
+ * @param direction 
+ * @param cns 
  * @returns 
  */
-export const insertWeft
-  = (draft: Draft,
-    weft_vtx: Array<YarnVertex>,
-    i: number,
-    sim: SimulationVars,
-    layer_maps: LayerMaps
-  )
-    : Array<YarnVertex> => {
+const getNextCellOnLayer = (i: number, j: number, wefts: number, warps: number, layer: number, direction: string, cns: Array<ContactNeighborhood>): { i: number, j: number } => {
+  let i_base = i;
+  let j_base = j;
 
-    let diam = sim.ms.getDiameter(draft.rowShuttleMapping[i]);
-    return processWeftInterlacements(draft, i, diam, weft_vtx, sim, layer_maps);
+  switch (direction) {
+    case "above":
+      for (let i_offset = 0; i_offset < wefts; i_offset++) {
+        let i_adj = strictMod(i_base - i_offset, wefts);
+        if (getMvZ({ i: i_adj, j, id: 0 }, warps, cns) == layer) {
+          return { i: i_adj, j }
+        }
+      }
+      return null;
+
+    case "below":
+      for (let i_offset = 0; i_offset < wefts; i_offset++) {
+        let i_adj = strictMod(i_base + i_offset, wefts);
+        if (getMvZ({ i: i_adj, j, id: 0 }, warps, cns) == layer) {
+          return { i: i_adj, j }
+        }
+      }
+      return null;
+
+
+    case "left":
+      for (let j_offset = 0; j_offset < warps; j_offset++) {
+        let j_adj = strictMod(j_base - j_offset, warps);
+        if (getMvZ({ i, j: j_adj, id: 0 }, warps, cns) == layer) {
+          return { i, j: j_adj }
+        }
+      }
+      return null;
+
+
+    case "right":
+      for (let j_offset = 0; j_offset < warps; j_offset++) {
+        let j_adj = strictMod(j_base + j_offset, warps);
+        if (getMvZ({ i, j: j_adj, id: 0 }, warps, cns) == layer) {
+          return { i, j: j_adj }
+        }
+      }
+      return null;
   }
 
+  console.error("DIRECTION ", direction, "NOT FOUND")
+
+}
+
+
+/**
+ * given two faces (assuming two neighboring faces), this function determines what kind of node type should be assigned
+ * @param f1 
+ * @param f2 
+ * @param ndx 
+ * @param warps 
+ * @param cns 
+ * @returns 
+ */
+const classifyNodeTypeBasedOnFaces = (f1: boolean, f2: boolean, ndx: CNIndex, warps: number, cns: Array<ContactNeighborhood>): Array<ContactNeighborhood> => {
+  if (setAndOppositeFaces(f1, f2)) {
+    cns = setNodeType(ndx, warps, cns, 'ACN');
+  } else if (setAndSameFaces(f1, f2)) {
+    cns = setNodeType(ndx, warps, cns, 'PCN')
+  } else if (f1 !== null && f2 == null) {
+    cns = setNodeType(ndx, warps, cns, 'ACN')
+  } else {
+    cns = setNodeType(ndx, warps, cns, 'ECN')
+  }
+  return cns;
+}
+
+
+
+// LAYER PARSING
+
+/**
+ * given a range in i and/or j this returns any float that has at least part of it within the boundary formed by i and j. 
+ * @param i  //the l can be less than 0 and r can be greater than wefts
+ * @param j 
+ * @param fs 
+ */
+const getUntouchedFloatsInRange = (i: { l: number, r: number }, j: { l: number, r: number }, all_floats: Array<{ id: number, float: CNFloat; touched: boolean }>, wefts: number, warps: number, cns): Array<number> => {
+
+
+  let candidates: Array<CNFloat> = [];
+  let in_range: Array<number> = [];
+
+  //unwrap the range
+  if (i.l > i.r) {
+    i.r = wefts + i.r;
+  }
+
+  //unwrap the range
+  if (j.l > j.r) {
+    j.r = warps + j.r;
+  }
+
+  for (let x = i.l; x <= i.r; x++) {
+    for (let y = j.l; y <= j.r; y++) {
+      let adj_i = strictMod(x, wefts);
+      let adj_j = strictMod(y, warps);
+
+      let weft = getWeftFloat(adj_i, adj_j, warps, cns);
+      if (weft !== null) candidates.push(weft);
+
+      let warp = getWarpFloat(adj_i, adj_j, wefts, warps, cns);
+      if (warp !== null) candidates.push(warp);
+
+    }
+  }
+
+  in_range = candidates.map(el => getFloatIndex(el, all_floats)).filter(el => el !== -1 && !all_floats[el].touched);
+
+  return in_range;
+
+
+}
+
+const rowHasActiveCNs = (i: number, warps: number, cns: Array<ContactNeighborhood>): boolean => {
+
+  let active = cns.filter(el => el.ndx.i == i && el.node_type !== 'ECN' && el.ndx.id < 2);
+  return active.length > 0;
+
+}
+
+/**
+ * This function will virtually "lift" the float specified. If this is a warp float, it will find any other warp floats or weft floats that cross over this warp in the range of limit (to the top/bottom) and mark them to be lifted. If it is a weft float, it will find any other weft floats or warp floats that cross over this weft and mark them to be lifted.
+ * @param float 
+ * @param wefts 
+ * @param warps 
+ * @param cns 
+ * @returns 
+ */
+const getFloatsAffectedByLifting = (float: CNFloat, all_floats: Array<{ id: number, float: CNFloat; touched: boolean }>, wefts: number, warps: number, limit: number, cns: Array<ContactNeighborhood>) => {
+
+  let attached: Array<number> = [];
+
+  let i_range, j_range = null;
+
+  if (float.face) {
+    //this is warp facing.
+
+    if ((getWarpFloatLength(float, wefts) + limit * 2) >= wefts) {
+      i_range = { l: 0, r: wefts - 1 };
+
+    } else {
+      i_range = { l: strictMod(float.left.i - limit, wefts), r: strictMod(float.right.i + limit, wefts) };
+
+    }
+
+    j_range = { l: float.left.j, r: float.right.j };
+  } else {
+    //this is weft facing. 
+
+    if (getWeftFloatLength(float, warps) + limit * 2 >= warps) {
+      j_range = { l: 0, r: warps - 1 };
+
+    } else {
+      j_range = { l: strictMod(float.left.j - limit, warps), r: strictMod(float.right.j + limit, warps) };
+    }
+
+    i_range = { l: float.left.i, r: float.right.i };
+
+  }
+
+
+  attached = getUntouchedFloatsInRange(i_range, j_range, all_floats, wefts, warps, cns);
+  attached = <Array<number>>filterToUniqueValues(attached);
+  return attached;
+
+}
+
+//sets this entire node to ECN and the face to null
+const unsetNodesAtIJ = (i: number, j: number, warps: number, cns: Array<ContactNeighborhood>): Array<ContactNeighborhood> => {
+  cns = setFace({ i, j, id: 0 }, warps, cns, null);
+  cns = setFace({ i, j, id: 1 }, warps, cns, null);
+  cns = setFace({ i, j, id: 2 }, warps, cns, null);
+  cns = setFace({ i, j, id: 3 }, warps, cns, null);
+
+  //SET LEFT AND RIGHT TO EMPTY
+  cns = setNodeType({ i, j, id: 0 }, warps, cns, 'ECN');
+  cns = setNodeType({ i, j, id: 1 }, warps, cns, 'ECN');
+
+  //SET TOP AND BOTTOM to POTENTIAL, 
+  cns = setNodeType({ i, j, id: 2 }, warps, cns, 'PCN');
+  cns = setNodeType({ i, j, id: 3 }, warps, cns, 'PCN');
+
+  return cns;
+
+}
+
+const determineEdgeBehavior = (pick_id: number, j: number, valid_picks: Array<number>, warps: number, right: boolean, cns: Array<ContactNeighborhood>): { cns: Array<ContactNeighborhood>, next_j: number } => {
+
+  console.log("TOP IS ", pick_id)
+
+  let directions = { left: { inc: 1, id: 0 }, right: { inc: -1, id: 1 } };
+  let dir = (right) ? directions.right : directions.left;
+
+  if (valid_picks.length <= 1) return { cns, next_j: -1 };
+
+  let top = valid_picks[pick_id];
+  let bottom = valid_picks[strictMod(pick_id - 1, valid_picks.length)];
+
+
+  console.log("GET FACE OF ", { i: top, j, id: 0 })
+  let top_f = getFace({ i: top, j, id: 0 }, warps, cns);
+  console.log("GET FACE OF ", { i: bottom, j, id: 0 })
+  let bottom_f = getFace({ i: bottom, j, id: 0 }, warps, cns);
+
+
+  if (setAndSameFaces(top_f, bottom_f)) {
+
+    cns = unsetNodesAtIJ(top, j, warps, cns);
+    cns = unsetNodesAtIJ(bottom, j, warps, cns);
+
+    return { cns, next_j: j - 1 };
+
+  } else if (setAndOppositeFaces(top_f, bottom_f)) {
+
+    cns = setNodeType({ i: top, j, id: dir.id }, warps, cns, 'ACN');
+    cns = setNodeType({ i: bottom, j, id: dir.id }, warps, cns, 'ACN');
+
+    return { cns, next_j: -1 };
+
+  } else if (top_f == null) {
+
+    if (bottom_f == true) {
+      for (let search = j + dir.inc; search >= 0 && search < warps; search = search + dir.inc) {
+        console.log("SEARCHING", top, { i: top, j: search, id: 0 })
+        if (getFace({ i: top, j: search, id: 0 }, warps, cns) !== null) {
+          cns = setNodeType({ i: bottom, j: search, id: dir.id }, warps, cns, 'ACN');
+          return { cns, next_j: -1 };
+        }
+      }
+
+      //I got to the end and it never found anything, just stop
+      return { cns, next_j: -1 }
+    }
+    else if (bottom_f == false) {
+
+      cns = unsetNodesAtIJ(top, j, warps, cns);
+      cns = unsetNodesAtIJ(bottom, j, warps, cns);
+      return { cns, next_j: j - 1 };
+    }
+    else {
+      return { cns, next_j: j - 1 };
+    }
+  } else if (bottom_f == null) {
+    if (top_f) {
+      cns = setNodeType({ i: top, j, id: dir.id }, warps, cns, 'ACN');
+      return { cns, next_j: -1 };
+    } else {
+      cns = unsetNodesAtIJ(top, j, warps, cns)
+      return { cns, next_j: j + dir.inc };
+    }
+  } else {
+    console.error("UNHANDLED EDGE BEHAVIOR", top, bottom, j, top_f, bottom_f)
+
+  }
+
+
+
+
+}
+
+
+/**
+ * if we pull on the edge of a freshly inserted weft, we need to see if it will unpick or not. This simulates how the weft might unpick (as a relationship to other wefts that share a material and system and then update the contact nodes to account for the behavior of this weft. )
+ * @param bottom 
+ * @param j 
+ * @param warps 
+ * @param cns 
+ * @returns 
+ */
+//   const determineRightEdgeBehavior = (top: number, bottom: number, next: number, j: number, warps: number, cns: Array<ContactNeighborhood>) : {cns: Array<ContactNeighborhood>, next_j: number} => {
+//   let top_f = getFace({i:top, j, id: 0}, warps, cns);
+//   let bottom_f = getFace({i:bottom, j, id: 0}, warps, cns);
+
+//   if(setAndSameFaces(top_f, bottom_f)){
+
+//     //SET LEFT AND RIGHT TO EMPTY
+//     cns = setNodeType({i:top, j, id:0}, warps, cns, 'ECN');
+//     cns = setNodeType({i:bottom, j, id:0}, warps, cns, 'ECN');
+//     cns = setNodeType({i:top, j, id:1}, warps, cns, 'ECN');
+//     cns = setNodeType({i:bottom, j, id:1}, warps, cns, 'ECN');
+
+//     //SET TOP AND BOTTOM to POTENTIAL, 
+//     cns = setNodeType({i:top, j, id:2}, warps, cns, 'PCN');
+//     cns = setNodeType({i:bottom, j, id:2}, warps, cns, 'PCN');
+//     cns = setNodeType({i:top, j, id:3}, warps, cns, 'PCN');
+//     cns = setNodeType({i:bottom, j, id:3}, warps, cns, 'PCN');
+
+//     return {cns, next_j: j-1};
+
+//   }else if(setAndOppositeFaces(top_f, bottom_f)){
+
+//     cns = setNodeType({i:top, j, id:1}, warps, cns, 'ACN');
+//     cns = setNodeType({i:bottom, j, id:1}, warps, cns, 'ACN');
+
+//     return {cns, next_j: -1};
+
+
+//   }else if(top_f == null){
+
+//     if(bottom_f == true){
+//       for(let search = j-1; search <= 0; search--){
+//         if(getFace({i:top, j:search, id:0}, warps, cns) !== null){
+//            cns = setNodeType({i:bottom, j:search, id:1}, warps, cns, 'ACN');
+//           return {cns, next_j: -1};
+//         }
+//       }
+//       //I got to the end and it never found anything, just stop
+//       return {cns, next_j:-1}
+//     }
+//     else if(bottom_f == false){
+
+//       cns = setNodeType({i:top, j, id:0}, warps, cns, 'ECN');
+//       cns = setNodeType({i:bottom, j, id:0}, warps, cns, 'ECN');
+//       cns = setNodeType({i:top, j, id:1}, warps, cns, 'ECN');
+//       cns = setNodeType({i:bottom, j, id:1}, warps, cns, 'ECN');
+//       return {cns, next_j: j-1};
+//     }
+//     else {
+//       return {cns, next_j: j-1};
+//     }
+//   }else if(bottom_f == null){
+//     if(top_f){
+//        cns = setNodeType({i:top, j, id:1}, warps, cns, 'ACN');
+//       return {cns, next_j: -1};
+//     }else{
+//       cns = setNodeType({i:top, j, id:0}, warps, cns, 'ECN');
+//       cns = setNodeType({i:top, j, id:1}, warps, cns, 'ECN');
+//       return {cns, next_j: j-1};
+//     }
+//   }else{
+//     console.error("UNHANDLED RIGHT EDGE BEHAVIOR", top, bottom, j, top_f, bottom_f)
+
+//   }
+
+// }
+
+/**
+ * when pulling the row, we need to know if or how to pull the yarn based on the relationships between acns on successive wefts. For instance, if it iterlaces the edge or if it is a repeat and essentially pulls itself out of the structure. 
+ * @param top 
+ * @param bottom 
+ * @param j 
+ * @param warps 
+ * @param cns 
+ * @returns 
+ */
+// const determineLeftEdgeBehavior = (top: number, bottom: number, j: number, warps: number, cns: Array<ContactNeighborhood>) : {cns: Array<ContactNeighborhood>, next_j: number} => {
+
+
+//   let top_f = getFace({i:top, j, id: 0}, warps, cns);
+//   let bottom_f = getFace({i:bottom, j, id: 0}, warps, cns);
+
+
+//   if(setAndSameFaces(top_f, bottom_f)){
+//     // console.log("SET AND SAME")
+
+//     cns = setNodeType({i:top, j, id:0}, warps, cns, 'ECN');
+//     cns = setNodeType({i:bottom, j, id:0}, warps, cns, 'ECN');
+//     cns = setNodeType({i:top, j, id:1}, warps, cns, 'ECN');
+//     cns = setNodeType({i:bottom, j, id:1}, warps, cns, 'ECN');
+
+//     cns = setNodeType({i:top, j, id:2}, warps, cns, 'PCN');
+//     cns = setNodeType({i:bottom, j, id:2}, warps, cns, 'PCN');
+//     cns = setNodeType({i:top, j, id:3}, warps, cns, 'PCN');
+//     cns = setNodeType({i:bottom, j, id:3}, warps, cns, 'PCN');
+//     return {cns, next_j: j+1};
+
+//   }else if(setAndOppositeFaces(top_f, bottom_f)){
+//     // console.log("SET AND OP")
+
+//     cns = setNodeType({i:top, j, id:0}, warps, cns, 'ACN');
+//     cns = setNodeType({i:bottom, j, id:0}, warps, cns, 'ACN');
+//     return {cns, next_j: -1};
+
+//   }else if(top_f == null){
+
+//       if(bottom_f == true){
+//           // console.log("UNSET (top) and RAISED (bottom)")
+
+//           for(let search = j+1; search < warps; search++){
+//             if(getFace({i:top, j:search, id:0}, warps, cns) !== null){
+//               cns = setNodeType({i:bottom, j:search, id:0}, warps, cns, 'ACN');
+//               return {cns, next_j: -1};
+//             }
+//           }
+//           //I got to the end and it never found anything, just stop
+//           return {cns, next_j:-1}
+//       }
+//       else if(bottom_f == false){
+//             // console.log("UNSET (top) and Lowered (bottom)")
+
+//           cns = setNodeType({i:top, j, id:0}, warps, cns, 'ECN');
+//           cns = setNodeType({i:bottom, j, id:0}, warps, cns, 'ECN');
+//           cns = setNodeType({i:top, j, id:1}, warps, cns, 'ECN');
+//           cns = setNodeType({i:bottom, j, id:1}, warps, cns, 'ECN');
+//           return {cns, next_j: j+1};
+//       }
+//       else {
+//           //console.log("UNSET BOTH")
+//           return {cns, next_j: j+1};
+//         } 
+//   }else if(bottom_f == null){
+
+//     //handle if top is black or top is while
+//     if(top_f){
+//         cns = setNodeType({i:top, j, id:0}, warps, cns, 'ACN');
+//         return {cns, next_j: -1};
+//     }else{
+//        cns = setNodeType({i:top, j, id:0}, warps, cns, 'ECN');
+//        cns = setNodeType({i:bottom, j, id:0}, warps, cns, 'ECN');
+//        cns = setNodeType({i:top, j, id:1}, warps, cns, 'ECN');
+//        return {cns, next_j: j+1};
+//     }
+
+
+//   }else{
+//     console.error("UNHANDLED LEFT EDGE BEHAVIOR", top, bottom, j, top_f, bottom_f)
+//   }
+
+// }
+
+
+/**
+ * determining layers requires keeping a list of floats with ids. This function takes a given float and sees if there is a float in the list that matches it's dimensions, returning the id of the index at which that float was found. 
+ * @param float 
+ * @param all_float_objs 
+ * @returns 
+ */
+const getFloatIndex = (float: CNFloat, all_float_objs: Array<{ id: number, float: CNFloat, touched: boolean }>): number => {
+
+  if (float == null || float.left == null || float.right == null) {
+    console.error("FLOAT IS NULL GET IN GET INDEX ", float);
+    return -1;
+  }
+  let ndx = all_float_objs.findIndex(el => el.float.left.i == float.left.i && el.float.left.j == float.left.j && el.float.left.id == float.left.id);
+
+  //if(ndx == -1) console.error("FLOAT OBJS DID NOT CONTAIN OBJECT", float, all_float_objs);
+  return ndx;
+
+}
+
+
+const setFloatZ = (float: CNFloat, wefts: number, warps: number, layer: number, cns: Array<ContactNeighborhood>): Array<ContactNeighborhood> => {
+  //lift the entire float: 
+  if (float.face) {
+
+    for (let x = 0; x <= getWarpFloatLength(float, wefts); x++) {
+      let adj_i = strictMod(float.left.i + x, wefts);
+      //only set values that have no already been set by another layer
+      if (getMvZ({ i: adj_i, j: float.left.j, id: 0 }, warps, cns) == 0) {
+        cns = setMvZ({ i: adj_i, j: float.left.j, id: 0 }, warps, cns, layer);
+        cns = setMvZ({ i: adj_i, j: float.left.j, id: 1 }, warps, cns, layer);
+        cns = setMvZ({ i: adj_i, j: float.left.j, id: 2 }, warps, cns, layer);
+        cns = setMvZ({ i: adj_i, j: float.left.j, id: 3 }, warps, cns, layer);
+      }
+    }
+  } else if (float.face === false) {
+    for (let x = 0; x <= getWeftFloatLength(float, warps); x++) {
+      let adj_j = strictMod(float.left.j + x, warps);
+      if (getMvZ({ i: float.left.i, j: adj_j, id: 0 }, warps, cns) == 0) {
+        cns = setMvZ({ i: float.left.i, j: adj_j, id: 0 }, warps, cns, layer);
+        cns = setMvZ({ i: float.left.i, j: adj_j, id: 1 }, warps, cns, layer);
+        cns = setMvZ({ i: float.left.i, j: adj_j, id: 2 }, warps, cns, layer);
+        cns = setMvZ({ i: float.left.i, j: adj_j, id: 3 }, warps, cns, layer);
+      }
+    }
+
+  }
+
+  return cns;
+}
+
+
+
+
+/**
+ * this needs to recursively search the previous rows (and loop if needed) to determine how far this float can slide in the y direction. 
+ * @param i the row to which we are comparing
+ * @param mvy the number of rows this has already moved
+ * @param float the float we are comparing to
+ * @param warps the width of the cloth
+ * @param cns the list of contact neighborhoods
+ */
+const calcMVYValue = (i: number, i_start: number, mvy: number, z_map: Array<{ i: number, reltn: string }>, float: CNFloat, wefts: number, warps: number, cns: Array<ContactNeighborhood>): { mvy: number, z_map: Array<{ i: number, reltn: string }>, next_i: number } => {
+
+  //wrap to continue search but eventually stop if we've covered the whole cloth
+  let adj_i = i;
+  if (i < 0) adj_i = strictMod(i, wefts);
+  if (strictMod(i, wefts) == i_start) return { mvy, z_map, next_i: null }
+  //get all of the attached floats on i
+  let attached: Array<CNFloat> = getAttachedFloats(adj_i, wefts, warps, float, cns);
+
+  //we need a bit more information in this case
+  let reltn = [];
+
+  if (attached.length == 0) {
+    //peak right and left; 
+    let right_edge_ndx = { i: adj_i, j: float.right.j, id: 1 };
+    let right_edge_type = getNodeType(right_edge_ndx, warps, cns);
+    let left_edge_ndx = { i: adj_i, j: float.left.j, id: 0 };
+    let left_edge_type = getNodeType(left_edge_ndx, warps, cns);
+
+    if (left_edge_type == "ACN" || right_edge_type == 'ACN') {
+      reltn.push("BUILD");
+    } else {
+      reltn.push(["SLIDE-OPP"]); //sliding on the opposite side of the warp
+    }
+
+  } else {
+    //determine what kind of relationship the 
+    reltn = getWarpwiseRelationship(float, attached);
+  }
+
+
+  //console.log("FOUND RELATIONS ", float, reltn.map(el => String(el)))
+  //adjust the right side of the float to clamp the value in: 
+  if (reltn.find(el => el == "BUILD") !== undefined) {
+    z_map.push({ i: i, reltn: 'BUILD' });
+    return { mvy, z_map, next_i: null }
+
+  } else if (reltn.find(el => el == "SLIDE-OPP") !== undefined) {
+    z_map.push({ i: i, reltn: 'SLIDE_OPP' });
+    return { mvy: mvy + 1, z_map, next_i: i - 1 }
+
+
+  } else if (reltn.find(el => el == "STACK") !== undefined) {
+    z_map.push({ i: i, reltn: 'STACK' });
+    return { mvy: mvy + .5, z_map, next_i: i - 1 }
+  } else {
+    //SLIDE OVER OR UNDER
+
+    if (reltn.find(el => el == "SLIDE-OVER") !== undefined) {
+      z_map.push({ i: i, reltn: 'SLIDE-OVER' });
+      return { mvy: mvy + 1, z_map, next_i: i - 1 };
+
+      //   let factor = (float.face) ? -1 : 1;
+
+      //   //get the largest layer offset from the previous row's attached warps
+      //   let prev_z = attached.reduce((acc, el) => {
+      //     if(el.left.j >= 0 && el.left.j < warps){
+      //       let left_z = getMvZ(el.left, warps, cns);
+      //       if(Math.abs(left_z) > acc) acc = Math.abs(left_z);
+      //     }
+
+      //     if(el.right.j >= 0 && el.right.j < warps){
+      //       let right_z = getMvZ(el.right, warps, cns);
+      //       if(Math.abs(right_z) > acc) acc = Math.abs(right_z);
+      //     }
+
+      //     return acc;
+      //   }, 0)
+
+      //     cns = setMvZ(float.left, warps, cns, prev_z*factor+factor);
+      //     cns = setMvZ(float.right, warps, cns, prev_z*factor+factor);
+
+    }
+
+
+    if (reltn.find(el => el == "SLIDE-UNDER") !== undefined) {
+      z_map.push({ i: i, reltn: 'SLIDE-UNDER' });
+      return { mvy: mvy + 1, z_map, next_i: i - 1 };
+      //   //this float is going to slide under the float before it. 
+
+      //   //this now needs to do an ordering sequence with the wefts before it. 
+
+      //   //the mvy factor should represent how many attached wefts this weft can float under
+
+      //   //for each of those attached wefts, we need to figure out what their current z level is and then set them to be above this one.
+
+
+
+
+      //   //if I am warp faced float, I'm going to be on the back (-) side of the cloth
+      //   let factor = (float.face) ? -1 : 1;
+
+      //     attached.forEach(attached_float => {
+      //       if(attached_float.left.j >= 0){
+      //          let prev_attached_left_z = getMvZ(attached_float.left, warps, cns);
+      //          cns = setMvZ(attached_float.left, warps, cns, prev_attached_left_z+factor);
+      //       }
+
+      //       if(attached_float.right.j < warps){
+      //         let prev_attached_right_z = getMvZ(attached_float.right, warps, cns);
+      //          cns = setMvZ(attached_float.right, warps, cns, prev_attached_right_z+factor);
+
+      //       }
+
+      //     });
+    }
+
+  }
+}
+
+
+
+
+
+
+// TOP LEVEL FUNCTIONS USED TO BUILD THE TOPOLOGY
+
+/**
+ * creates an empty set of CN's for the given drawdown and then walks through and populates their face and id values. 
+ * @param dd 
+ * @returns an initialized list of contact neighborhoods
+ */
+const initContactNeighborhoods = (dd: Drawdown): Promise<Array<ContactNeighborhood>> => {
+  let width = warps(dd);
+  let height = wefts(dd);
+  let size = width * height * 4;
+  let cns: Array<ContactNeighborhood> = new Array<ContactNeighborhood>(size);
+
+  for (let x = 0; x < cns.length; x++) {
+    cns[x] = {
+      ndx: { i: 0, j: 0, id: 0 },
+      node_type: 'ECN',
+      mv: { y: 0, z: 0 },
+      face: null,
+    }
+  }
+
+  for (let i = 0; i < height; i++) {
+    for (let j = 0; j < width; j++) {
+
+      cns = setIndex({ i, j, id: 0 }, width, cns);
+      cns = setIndex({ i, j, id: 1 }, width, cns);
+      cns = setIndex({ i, j, id: 2 }, width, cns);
+      cns = setIndex({ i, j, id: 3 }, width, cns);
+
+      let face = getCellValue(dd[i][j]);
+      cns = setFace({ i, j, id: 0 }, width, cns, face)
+      cns = setFace({ i, j, id: 1 }, width, cns, face)
+      cns = setFace({ i, j, id: 2 }, width, cns, face)
+      cns = setFace({ i, j, id: 3 }, width, cns, face)
+
+    }
+  }
+  return Promise.resolve(cns);
+}
+
+
+/**
+ * analyses the relationship between the current row's CNS and the previous rows CNS to determine if and how far the floats on this row can pack. 
+ * @param i the row number
+ * @param cns the list of current contact neighborhoods
+ */
+const packPicks = (wefts: number, warps: number, cns: Array<ContactNeighborhood>): Array<ContactNeighborhood> => {
+
+  for (let i = 0; i < wefts; i++) {
+
+    let floats: Array<CNFloat> = getRowAsFloats(i, warps, cns);
+    //console.log("ANALYSING ", i)
+
+    floats.forEach(float => {
+      if (float.face != null) {
+        // console.log("CHECKING FLOAT ", float.left.j, float.right.j)
+        let obj = calcMVYValue(i - 1, i, 0, [], float, wefts, warps, cns);
+        //console.log("*RETURNED ", obj)
+        while (obj.next_i !== null) {
+          obj = calcMVYValue(obj.next_i, i, obj.mvy, obj.z_map, float, wefts, warps, cns);
+          //console.log("RETURNED ", obj)
+
+        }
+        cns = setMvY(float.left, warps, cns, obj.mvy);
+        let adj_right: CNIndex = {
+          i: float.right.i,
+          j: strictMod(float.right.j, warps),
+          id: float.right.id
+        };
+
+        cns = setMvY(adj_right, warps, cns, obj.mvy);
+
+
+      }
+    });
+    return cns;
+  }
+}
+
+
+
+
+const updateCNs = (cns: Array<ContactNeighborhood>, wefts: number, warps: number, sim: SimulationVars): Array<ContactNeighborhood> => {
+  console.log("UPDATE CNS ",)
+
+  let regions = [
+    { name: "above", id: 2, start_i: -1, start_j: 0 },
+    { name: "below", id: 3, start_i: 1, start_j: 0 },
+    { name: "left", id: 0, start_i: 0, start_j: -1 },
+    { name: "right", id: 1, start_i: 0, start_j: 1 },
+  ]
+  for (let i = 0; i < wefts; i++) {
+    for (let j = 0; j < warps; j++) {
+      let face = getFace({ i, j, id: 0 }, warps, cns);
+      let layer = getMvZ({ i, j, id: 0 }, warps, cns);
+
+      for (let region of regions) {
+        //find the next next acn above that shares the layer
+        let ij = getNextCellOnLayer(i + region.start_i, j + region.start_j, wefts, warps, layer, region.name, cns);
+        if (ij == null) {
+          cns = setNodeType({ i, j, id: region.id }, warps, cns, 'ECN')
+        } else {
+          let last_face = getFace({ i: ij.i, j: ij.j, id: 0 }, warps, cns)
+          cns = classifyNodeTypeBasedOnFaces(face, last_face, { i, j, id: region.id }, warps, cns);
+
+        }
+
+        //ADD ANY REQUIRED VIRTUAL NODES for FULL WIDTH RENDERING
+        let ndx = { i, j, id: region.id };
+        if (!sim.wefts_as_written) {
+          switch (region.name) {
+            case "above":
+              if (i == 0 && getNodeType(ndx, warps, cns) !== 'ACN') setNodeType(ndx, warps, cns, 'VCN')
+              break;
+
+            case "below":
+              if (i == wefts - 1 && getNodeType(ndx, warps, cns) !== 'ACN') setNodeType(ndx, warps, cns, 'VCN')
+              break;
+
+            case "left":
+              if (j == 0 && getNodeType(ndx, warps, cns) !== 'ACN') setNodeType(ndx, warps, cns, 'VCN')
+              break;
+
+            case "right":
+              if (j == warps - 1 && getNodeType(ndx, warps, cns) !== 'ACN') setNodeType(ndx, warps, cns, 'VCN')
+              break;
+          }
+
+
+        }
+      }
+    }
+  }
+  return cns;
+
+}
+
+
+const pullRows = (d: Draft, paths: Array<WeftPath>, cns: Array<ContactNeighborhood>): Array<ContactNeighborhood> => {
+
+  for (let i = 0; i < wefts(d.drawdown); i++) {
+    let path = getWeftPath(paths, d.rowSystemMapping[i], d.rowShuttleMapping[i]);
+    cns = pullRow(i, wefts(d.drawdown), warps(d.drawdown), path.pics, cns);
+  }
+
+  return cns;
+}
+
+
+
+
+/** checks this row against the last row of the same material and system type and sees if the edge will interlace. If not, it removes any ACNs that would be pulled out in this pic */
+export const pullRow = (i: number, wefts: number, warps: number, prev_i_list: Array<number>, cns: Array<ContactNeighborhood>): Array<ContactNeighborhood> => {
+
+  console.log("PULLING ROW ", i, prev_i_list)
+
+  if (prev_i_list.length == 0) return cns;
+
+  //last can't always just be the last row in the list, because this would look pairwise and not consider prior rows that have been un-picked. 
+  let last = -1;
+  let next = -1;
+
+  //get only picks in this list that have valid. 
+  let valid_pics = prev_i_list.filter(el => rowHasActiveCNs(el, warps, cns));
+  let ndx = valid_pics.findIndex(el => el == i);
+
+  if (ndx == -1) return cns;
+
+  const direction = ndx % 2 == 1; //true means the previous row went from left to right
+  let starting_j = (direction) ? warps - 1 : 0;
+
+  let obj: { cns: Array<ContactNeighborhood>, next_j: number } = determineEdgeBehavior(ndx, starting_j, valid_pics, warps, direction, cns);
+  cns = obj.cns;
+
+  while (obj.next_j !== -1 && obj.next_j < warps && obj.next_j >= 0) {
+
+    obj = determineEdgeBehavior(ndx, obj.next_j, valid_pics, warps, direction, cns);
+    cns = obj.cns;
+  }
+
+
+  // console.log("AFTER i ", i);
+  // printYValues(cns, wefts, warps, false);
+  printYValues(cns, wefts, warps, true);
+  return cns;
+}
+
+/**
+* starting with the longest warp, this function searches for all the floats that would be affected (and then would subsequently affect others, if that warp was lifted) the degree or (height) to which it is lifted is specified by the "lift-limit" param in SimulationVars. This assigns layers sequentially, with 1 meaning it is the top layer (looking down on the cloth from above), 2 is the next layer under, 3 is under 2 and so on. a value of 0 means that that this CN was never visited by the algorithm. This function is called recursively as long as there are still floats to analyze. 
+* @param wefts 
+* @param warps 
+* @param layer 
+* @param cns 
+* @param sim 
+* @returns 
+*/
+const isolateLayers = (wefts: number, warps: number, layer: number, cns: Array<ContactNeighborhood>, sim: SimulationVars): Array<ContactNeighborhood> => {
+
+
+
+  //get weft floats; 
+  let floats: Array<CNFloat> = [];
+
+  for (let i = 0; i < wefts; i++) {
+    floats = floats.concat(getRowAsFloats(i, warps, cns).filter(float => !float.face));
+  }
+
+  for (let j = 0; j < warps; j++) {
+    floats = floats.concat(getColAsFloats(j, wefts, warps, cns).filter(float => float.face));
+  }
+
+  floats = floats.filter(el => getMvZ(el.left, warps, cns) == 0);
+
+
+  const floats_with_id = floats.map((el, ndx) => { return { id: ndx, float: el, touched: false } });
+
+  if (floats_with_id.length == 0) return cns;
+
+  let longest_warp = floats
+    .reduce((acc, el, ndx) => {
+      if (el.face) {
+        let len = getWarpFloatLength(el, wefts) + 1;
+        if (len >= acc.len) {
+          acc.len = len;
+          acc.id = ndx;
+        }
+      }
+      return acc;
+    }, { len: 0, id: -1 })
+
+
+  //internally recursive function that updates the float list
+  function liftFloat(float: CNFloat, float_ndx: number) {
+
+
+    let float_obj = floats_with_id[float_ndx];
+
+    if (float_obj.touched == true) return;
+
+    float_obj.touched = true;
+
+    let attached: Array<number> = [];
+
+    attached = getFloatsAffectedByLifting(float, floats_with_id, wefts, warps, sim.lift_limit, cns);
+
+
+    if (attached.length == 0) return;
+
+
+    for (let a = 0; a < attached.length; a++) {
+      let float_ndx = attached[a];
+      let a_float: CNFloat = floats_with_id[float_ndx].float;
+      if (float_ndx !== -1) liftFloat(a_float, float_ndx);
+    }
+  }
+
+
+  //pull up on the longest warp float, see what moves with it. 
+  liftFloat(floats[longest_warp.id], longest_warp.id);
+
+
+  console.log("**** LIFTING COMPLETE ****")
+  for (let f of floats_with_id) {
+    if (f.touched) {
+      cns = setFloatZ(f.float, wefts, warps, layer, cns);
+    }
+  }
+  cns = updateCNs(cns, wefts, warps, sim);
+  printLayerMap(cns, wefts, warps);
+  return isolateLayers(wefts, warps, ++layer, cns, sim)
+}
+
+
+
+/**
+ * this will read through a current drawdown and populate the information needed for the contact neighborhoods, determining if and how different wefts stack or slide, etc. This will change based on the behavior of the wefts so we do need some information here if the simulation should assume the wefts run full width or if we want to simulate as drafted (where, if there isn't a selvedge, some might pull out) 
+ * @param dd 
+ * @param cns 
+ * @param sim variables to control how the parsing takes place (e.g. specifically if you want to render the draft as it would be woven vs forcing it to go full width)
+ * @returns 
+ */
+const parseDrawdown = (d: Draft, cns: Array<ContactNeighborhood>, sim: SimulationVars): Promise<Array<ContactNeighborhood>> => {
+
+  console.log("**************** NEW DRAFT LOADED **************", d)
+
+  let paths: Array<WeftPath> = initWeftPaths(d);
+  paths = parseWeftPaths(d, paths);
+
+  let dd = d.drawdown;
+
+  //START BY POPULATING THE CNS MAPS
+  cns = updateCNs(cns, wefts(d.drawdown), warps(d.drawdown), sim);
+
+
+  if (sim.wefts_as_written) {
+    cns = pullRows(d, paths, cns);
+    //update CNS after pull to reset warp aligned ACNS
+    cns = updateCNs(cns, wefts(d.drawdown), warps(d.drawdown), sim);
+  }
+
+  if (sim.use_layers) cns = isolateLayers(wefts(dd), warps(dd), 1, cns, sim);
+
+  cns = packPicks(wefts(dd), warps(dd), cns);
+
+  printYValues(cns, wefts(dd), warps(dd), true)
+  return Promise.resolve(cns);
+}
+
+
+
+/**
+ * update this to contact neighborhood 
+ */
+export const getDraftTopology = async (draft: Draft, sim: SimulationVars): Promise<Array<ContactNeighborhood>> => {
+
+  return initContactNeighborhoods(draft.drawdown)
+    .then(cns => {
+      return parseDrawdown(draft, cns, sim);
+    });
+}
+
+
+// RENDERING TOPOLOGY TO VERTEX
+
+
+/**
+ * if every row is packed at the same packing force, then the fell line created by a straight beater would be represented by the maximum y value;  Y values represent the center of teh material. 
+ * @param vtxs 
+ * @returns the y value represented by the top edge of the last weft inserted and packed. 
+ */
+const getFellY = (vtxs: Array<YarnVertex>, diameter: number): number => {
+  let max_y = vtxs.reduce((acc, el) => {
+    if (el.y > acc) return el.y;
+    return acc;
+  }, 0);
+  return max_y + diameter / 2;
+
+}
+
+/**
+ * looks at the move number of the current node and determines, based on the nodes this is connected to, how far is should actually move from it's relationship to neighboring interlacements. This could be more sophisticated (but right now it returns the max over a window of a given size). 
+ * @param ndx 
+ * @param cns 
+ */
+const calcYOffset = (ndx: CNIndex, warps: number, cns: Array<ContactNeighborhood>, simVars: SimulationVars): number => {
+
+  let max_dist = 10; //the distance at which one weft would NOT affect another
+  let mvy = getMvY(ndx, warps, cns);
+
+  let j_dist = simVars.warp_spacing;  //the distance traveled for each j
+  let j_check = Math.floor((max_dist / j_dist) / 2);
+  let left = (simVars.wefts_as_written) ? ndx.j - j_check : strictMod(ndx.j - j_check, warps);
+  let right = (simVars.wefts_as_written) ? ndx.j + j_check : strictMod(ndx.j + j_check, warps);
+  let j_left = Math.min(left, right);
+  let j_right = Math.max(left, right);
+
+  // console.log("J, J LEFT, J RIGHT ", ndx.j, j_left, j_right)
+  let row = cns.filter(
+    el => el.ndx.i == ndx.i
+      && el.node_type == "ACN"
+      && el.ndx.j >= j_left
+      && el.ndx.j <= j_right
+  );
+
+  //row should have at least i
+  // console.log("ROW ", row);
+
+  // let sum:number = row.reduce((acc, el) => {
+  //   acc += el.mv.y;
+  //   return acc;
+  // }, 0);
+
+  // return sum / row.length;
+
+  let min: number = row.reduce((acc, el) => {
+    if (acc < el.mv.y) acc = el.mv.y;
+    return acc;
+  }, mvy);
+
+  return min;
+
+
+
+}
+
+
+/**
+ * converts the information for the CN into a vertex using the information from the CNs as well as the simulation variables. It assumes that for any pick, how far this y can travel from it's insertion point is a function of the pack force, position of fell line, and the mobility of the individual float. 
+ * 
+ *  
+ * @param ndx 
+ * @param d 
+ * @param vtxs 
+ * @param cns 
+ * @param sim 
+ * @returns 
+ */
+const createVertex = (ndx: CNIndex, fell: number, d: Draft, cns: Array<ContactNeighborhood>, sim: SimulationVars): YarnVertex => {
+
+
+
+  let width = warps(d.drawdown);
+  let weft_material_id = d.rowShuttleMapping[ndx.i];
+  let weft_diameter = sim.ms.getDiameter(weft_material_id);
+  let warp_material_id = d.colShuttleMapping[ndx.j];
+  let warp_diameter = sim.ms.getDiameter(warp_material_id);
+
+  //this is a function of EPI, warp diameter and weft diameter, but for now, we'll be sloppy
+  const interlacement_space = weft_diameter;
+
+  let pack_factor = (1 - sim.pack / 100);
+
+  let mvy = getMvY(ndx, width, cns);
+  let max_row_mat_diameter = weft_diameter;
+
+  for (let i = 0; i < mvy; i++) {
+    //get each material that this could theoretically slide over or under
+    let row_mat_diameter = 0;
+    if (ndx.i - i >= 0) row_mat_diameter = d.rowShuttleMapping[ndx.i - i];
+    if (row_mat_diameter > max_row_mat_diameter) max_row_mat_diameter = row_mat_diameter;
+  }
+
+
+  //Each ACN has a MY number, which represents how far this weft *can* slide but not neccessarily how it does slide. This calculates how far it can slide based on it's relationships to it's neighbors and their sliding 
+
+  let y_offset = calcYOffset(ndx, width, cns, sim);
+  let mobility = (y_offset > 1) ? -1 : -y_offset; //clamp this value to -1
+
+  //if pack_factor is 0 (no packing) this weft should sit at fell-line + diameter/2
+  //if pack factor is 1 (max packing) this weft can sit  fell-line - max_y_displacement. Max y displacement is a function of the yarns that are stacking at this specific location. 
+
+
+  let max_min = {
+    max: fell + weft_diameter + interlacement_space,
+    min: fell + (max_row_mat_diameter / 2) * mobility + weft_diameter / 2
+  };
+  let y = interpolate(pack_factor, max_min);
+
+
+  //let the layer first
+  let z = getMvZ(ndx, width, cns) * sim.layer_spacing * -1;
+  //then adjust for which side of the warp it is sitting upon. 
+  if (getFace(ndx, width, cns)) z -= warp_diameter;
+  else z += warp_diameter;
+
+
+
+
+  let x = sim.warp_spacing * ndx.j;
+  if (ndx.id == 0) x -= warp_diameter;
+  if (ndx.id == 1) x += warp_diameter;
+
+
+  return { ndx, x, y, z }
+
+
+}
+
+/**
+ * initializes a list of vertexes for every unique system-material combination used in this draft
+ * @param d 
+ */
+const initWeftPaths = (d: Draft): Array<WeftPath> => {
+
+  let weft_paths: Array<WeftPath> = [];
+
+  for (let i = 0; i < wefts(d.drawdown); i++) {
+    let system = d.rowSystemMapping[i];
+    let material = d.rowShuttleMapping[i];
+    let path = weft_paths.find(el => el.system == system && el.material == material)
+    if (path == undefined) {
+      weft_paths.push({ system, material, vtxs: [], pics: [] });
+    }
+
+  }
+  return weft_paths;
+
+}
+
+
+const parseWeftPaths = (d: Draft, paths: Array<WeftPath>): Array<WeftPath> => {
+
+  for (let i = 0; i < wefts(d.drawdown); i++) {
+    let material = d.rowShuttleMapping[i];
+    let system = d.rowSystemMapping[i];
+    let path = paths.find(el => el.material == material && el.system == system);
+    if (path == undefined) Promise.reject('no path found for material and system ')
+    path.pics.push(i);
+  }
+
+  return paths;
+}
+
+export const getFlatVtxList = (paths: Array<WeftPath>): Array<YarnVertex> => {
+  //collapse the paths into a flat list
+  return paths.reduce((acc, el) => {
+    acc = acc.concat(el.vtxs);
+    return acc;
+  }, []);
+}
+
+export const getWeftPath = (paths: Array<WeftPath>, system: number, material: number): WeftPath => {
+  return paths.find(el => el.material == material && el.system == system);
+}
+
+
+
+
+const getYFromWeft = (i: number, j: number, cns: Array<ContactNeighborhood>, paths: Array<WeftPath>) => {
+
+  //first, check if this index exists in the path already
+  let active_path = null;
+  for (let path of paths) {
+    if (path.pics.find(pic => pic == i) !== undefined)
+      active_path = path;
+  }
+  if (active_path !== null) {
+    //get all the vertexes associated with this weft. 
+    let vtx_list = active_path.vtxs.filter(vtx => vtx.ndx.i == i);
+    let closest: any = vtx_list.reduce((acc, el) => {
+      let dist = j - el.ndx.j;
+      if (dist == 0) {
+        acc.dist_left = dist;
+        acc.dist_right = dist;
+        acc.j_left = el.ndx.j;
+        acc.j_right = el.ndx.j;
+        acc.y_left = el.y;
+        acc.y_right = el.y;
+
+      } else if (dist > 0) {
+        if (dist < acc.dist_left) {
+          acc.dist_left = dist;
+          acc.j_left = el.ndx.j;
+          acc.y_left = el.y;
+        }
+      } else {
+        dist = Math.abs(dist);
+        if (dist < acc.dist_right) {
+          acc.dist_right = dist;
+          acc.j_right = el.ndx.j;
+          acc.y_right = el.y;
+
+        }
+      }
+
+      return acc;
+    }, { dist_left: 10000, j_left: -1, y_left: 0, dist_right: 10000, j_right: -1, y_right: 0 });
+
+
+    return closest.y_left + closest.y_right / 2;
+
+  } else {
+    return 0;
+  }
+
+
+}
+
+
+const getWarpACNS = (j: number, cns: Array<ContactNeighborhood>): Array<ContactNeighborhood> => {
+  return cns.filter(el => el.ndx.j == j && el.node_type == 'ACN' && (el.ndx.id == 2 || el.ndx.id == 3));
+}
+
+export const renderWarps = (draft: Draft, cns: Array<ContactNeighborhood>, weft_paths: Array<WeftPath>, sim: SimulationVars): Promise<Array<WarpPath>> => {
+
+  let warp_paths: Array<WarpPath> = [];
+  let width = warps(draft.drawdown);
+
+  for (let j = 0; j < width; j++) {
+
+    let x = j * sim.warp_spacing;
+    let vtxs: Array<YarnVertex> = [];
+    let system = draft.colSystemMapping[j];
+    let material = draft.colShuttleMapping[j];
+
+    let acns = getWarpACNS(j, cns);
+
+    for (let cn of acns) {
+      let z = cn.mv.z * sim.layer_spacing * -1;
+      let y = getYFromWeft(cn.ndx.i, j, cns, weft_paths);
+      vtxs.push({ x, y, z, ndx: cn.ndx });
+
+    }
+
+    //push the ends:
+    if (vtxs.length > 0) {
+      vtxs.unshift({ x: vtxs[0].x, y: -2 * sim.ms.getDiameter(material), z: vtxs[0].z, ndx: { i: 0, j, id: 3 } });
+      vtxs.push({ x: vtxs[vtxs.length - 1].x, y: wefts(draft.drawdown) * sim.ms.getDiameter(material), z: vtxs[vtxs.length - 1].z, ndx: { i: wefts(draft.drawdown) - 1, j, id: 2 } });
+    } else {
+      vtxs.push({ x, y: -2 * sim.ms.getDiameter(material), z: 0, ndx: { i: 0, j, id: 3 } });
+      vtxs.push({ x, y: wefts(draft.drawdown) * sim.ms.getDiameter(material), z: 0, ndx: { i: wefts(draft.drawdown) - 1, j, id: 2 } });
+    }
+
+    warp_paths.push({ system, material, vtxs })
+
+
+
+
+    // for(let i = 0; i < wefts(draft.drawdown); i++){
+    //   let type_top = getNodeType({i, j, id: 2}, width, cns);
+    //   let type_bottom = getNodeType({i, j, id: 3}, width, cns);
+    //   console.log("NODE TYPE AT ", i, j, " is ", type_top, type_bottom, )
+    //   if(type_top == 'ACN' || type_top == 'VCN' || type_bottom == 'ACN' || type_bottom == 'VCN'){
+
+    //     let z = getMvZ({i, j, id: 2}, width, cns) * sim.layer_spacing * -1;
+    //     let y = getYFromWeft(i, j, cns, weft_paths);
+    //     vtxs.push({x, y, z, ndx:{i, j, id:2}});
+
+    //   }
+    // }
+  }
+
+  return Promise.resolve(warp_paths);
+
+
+
+}
+/**
+ * converts a topology diagram to a list of weft vertexes to draw. It only draws key interlacements to the list
+ * @param draft 
+ * @param topo 
+ * @param layer_map 
+ * @param sim 
+ * @returns 
+ */
+export const followTheWefts = (draft: Draft, cns: Array<ContactNeighborhood>, sim: SimulationVars): Promise<Array<WeftPath>> => {
+  let warpnum = warps(draft.drawdown);
+
+  //get a list of the unique system-material combinations of this weft. 
+  let paths: Array<WeftPath> = initWeftPaths(draft);
+  let fell_y = 0;
+
+  //parse row by row, then assign to the specific path to which this belongs
+  for (let i = 0; i < wefts(draft.drawdown); i++) {
+
+
+    let system = draft.rowSystemMapping[i];
+    let material = draft.rowShuttleMapping[i];
+    let path = getWeftPath(paths, system, material);
+
+    if (path === undefined) Promise.reject("weft path with system and material not found")
+
+    let flat_vtx_list = getFlatVtxList(paths);
+
+    let direction = (path.pics.length % 2 == 0);  //true is left to right, false is 
+
+
+    let temp_pic: Array<YarnVertex> = [];
+
+    if (direction) {
+      //left to right - 
+
+      for (let j = 0; j < warpnum; j++) {
+
+        if (getNodeType({ i, j, id: 0 }, warpnum, cns) == 'ACN') {
+          let vtx = createVertex({ i, j, id: 0 }, fell_y, draft, cns, sim);
+          temp_pic.push(vtx);
+        }
+
+        if (getNodeType({ i, j, id: 1 }, warpnum, cns) == 'ACN') {
+          let vtx = createVertex({ i, j, id: 1 }, fell_y, draft, cns, sim);
+          temp_pic.push(vtx);
+        }
+      }
+
+    } else {
+
+      for (let j = warpnum - 1; j >= 0; j--) {
+        if (getNodeType({ i, j, id: 1 }, warpnum, cns) == 'ACN') {
+          let vtx = createVertex({ i, j, id: 1 }, fell_y, draft, cns, sim);
+          temp_pic.push(vtx);
+        }
+
+        if (getNodeType({ i, j, id: 0 }, warpnum, cns) == 'ACN') {
+          let vtx = createVertex({ i, j, id: 0 }, fell_y, draft, cns, sim);
+          temp_pic.push(vtx);
+        }
+      }
+    }
+
+    //IF WE ARE RENDERING FULL WIDTH, add the VCNS and make sure they match the layer of the weft. 
+    if (!sim.wefts_as_written) {
+      let left: YarnVertex = null;
+      let right: YarnVertex = null;
+      let last_ndx = temp_pic.length - 1;
+
+      if (temp_pic.length > 0) {
+
+
+        //set it to the layer for this weft
+        let left_ndx = { i, j: 0, id: 0 };
+        if (getNodeType(left_ndx, warpnum, cns) !== 'ACN') {
+          cns = setMvZ(left_ndx, warpnum, cns, getMvZ(temp_pic[0].ndx, warpnum, cns));
+          left = createVertex(left_ndx, fell_y, draft, cns, sim);
+        }
+
+        //set it to the layer for this weft
+        let right_ndx = { i, j: warpnum - 1, id: 1 };
+        if (getNodeType(right_ndx, warpnum, cns) !== 'ACN') {
+          cns = setMvZ(right_ndx, warpnum, cns, getMvZ(temp_pic[last_ndx].ndx, warpnum, cns));
+          right = createVertex(right_ndx, fell_y, draft, cns, sim);
+        }
+
+      }
+
+      if (direction) {
+        if (left !== null) temp_pic.unshift(left);
+        if (right !== null) temp_pic.push(right);
+      } else {
+        if (right !== null) temp_pic.unshift(right);
+        if (left !== null) temp_pic.push(left);
+      }
+    }
+
+
+    path.vtxs = path.vtxs.concat(temp_pic);
+    path.pics.push(i);
+    fell_y = getFellY(flat_vtx_list.concat(path.vtxs), sim.ms.getDiameter(material));
+
+
+  }
+
+  return Promise.resolve(paths);
+}
 
 
 export const calcClothHeightOffsetFactor = (diam: number, radius: number, offset: number): number => {
   return diam * (radius - offset) / radius;
 }
 
+/** CODE DEVOTED TO MASS-SPRING-CALC */
+
+export const createParticle = (x: number, y: number, z: number, pinned: boolean): Particle => {
+  let position = new THREE.Vector3(x, y, z);
+  let geometry = new THREE.SphereGeometry(0.1, 16, 16);
+  let material = new THREE.MeshBasicMaterial({ color: 0xff0000 })
+
+  let acceleration: THREE.Vector3 = new THREE.Vector3();
 
 
-
-export const addWeftInterlacement
-  = (
-    draft: Draft,
-    i: number,
-    j: number,
-    z_pos: number,
-    diam: number,
-    sim: SimulationVars,
-    weft_vtxs: Array<YarnVertex>,
-  )
-    : Array<YarnVertex> => {
-    let offset = getWeftOffsetFromWarp(draft, i, j, sim.ms);
-    let orient = getWeftOrientationVector(draft, i, j);
-
-    weft_vtxs.push({
-      x: j * sim.warp_spacing,
-      y: i * diam,
-      z: z_pos * sim.layer_spacing + offset * orient,
-      i: i,
-      j: j
-    });
-
-
-    return weft_vtxs;
-
+  let p = {
+    position,
+    previousPosition: position.clone(),
+    geometry,
+    material,
+    mesh: new THREE.Mesh(geometry, material),
+    acceleration,
+    pinned
   }
 
+  p.mesh.position.copy(position)
+  return p;
+}
 
-export const addWarpInterlacement = (draft: Draft, i: number, j: number, z_pos: number, diam: number, sim: SimulationVars, warp_vtxs: Array<Array<YarnVertex>>, weft_vtxs: Array<Array<YarnVertex>>): Array<Array<YarnVertex>> => {
+export const applyForce = (p: Particle, force: THREE.Vector3): Particle => {
+  p.acceleration.add(force);
+  return p;
+}
+
+export const verlet = (p: Particle, damping: number, timeStep: number): Particle => {
+  if (p.pinned) return p;
+
+  const velocity = p.position.clone().sub(p.previousPosition).multiplyScalar(damping)
+
+  const newPos = p.position.clone().add(velocity).add(p.acceleration.clone().multiplyScalar(timeStep ** 2));
+
+  p.previousPosition.copy(p.position);
+  p.position.copy(newPos);
+  p.acceleration.set(0, 0, 0);
+
+  return p;
+
+}
+
+export const updateParticleMesh = (p: Particle): Particle => {
+  p.mesh.position.copy(p.position);
+  return p;
+}
+
+export const createSpring = (p1: Particle, p2: Particle, restLength: number, color: number, diameter: number
+): Spring => {
+
+  let spring = {
+    pts: [],
+    mesh: null,
+    p1, p2, restLength, color, diameter
+  }
+
+  spring.pts.push(new THREE.Vector3(p1.position.x, p1.position.y, p1.position.z));
+
+  spring.pts.push(new THREE.Vector3(p2.position.x, p2.position.y, p2.position.z));
+
+  //const curve = new THREE.CatmullRomCurve3(spring.pts, false, 'catmullrom', .1);
+
+  //const geometry = new THREE.TubeGeometry( curve, 2, 1, 8, false );
+  const geometry = new THREE.BufferGeometry().setFromPoints(spring.pts);
+  const material = new THREE.LineBasicMaterial({ color: 0x00ff00 }); // Green line
+
+  // const material = new THREE.MeshPhysicalMaterial( {
+  //       color: color,
+  //       depthTest: true,
+  //       emissive: 0x000000,
+  //       metalness: 0,
+  //       roughness: 0.5,
+  //       clearcoat: 1.0,
+  //       clearcoatRoughness: 1.0,
+  //       reflectivity: 0.0
+  //   } ); 
+
+  spring.mesh = new THREE.Line(geometry, material)
+  //spring.mesh = new THREE.Mesh(geometry, material);
+
+  return spring;
 
 
-  //THIS HAPPENS BECAUSE WE FORCE EVERY WARP TO HAVE AT LEAST 2 points at beginning and end, even if they 
-  //don't change position in the cloth
-  if (i < 0 || i >= weft_vtxs.length) {
-    warp_vtxs[j].push({
-      x: j * sim.warp_spacing,
-      y: i * diam,
-      z: z_pos * sim.layer_spacing,
-      i: i,
-      j: j
-    });
-  } else {
+}
 
+export const satisfyConstraint = (s: Spring): Spring => {
+  const delta = s.p2.position.clone().sub(s.p1.position);
+  const dist = delta.length();
+  const diff = (dist - s.restLength) / dist;
+  const correction = delta.multiplyScalar(0.5 * diff);
 
-    let weft = weft_vtxs[i];
+  if (!s.p1.pinned) s.p1.position.add(correction);
+  if (!s.p2.pinned) s.p2.position.sub(correction);
 
-    let closest_weft_vtx = weft.reduce((acc, el, ndx) => {
-      let dist = Math.abs(el.j - j);
-      if (dist < acc.val) return { ndx, val: dist };
-      else return acc;
+  return s;
+}
 
-    }, { ndx: -1, val: 100000 })
+export const updateSpringMesh = (s: Spring): Spring => {
+  s.mesh.position.copy(s.p1.position);
 
+  const vertices = s.mesh.geometry.attributes.position.array;
+  vertices[0] = s.p1.position.x;
+  vertices[1] = s.p1.position.y;
+  vertices[2] = s.p1.position.z;
 
-    if (closest_weft_vtx.ndx !== -1) {
+  vertices[3] = s.p2.position.x;
+  vertices[4] = s.p2.position.y;
+  vertices[5] = s.p2.position.z;
 
-      warp_vtxs[j].push({
-        x: j * sim.warp_spacing,
-        y: weft[closest_weft_vtx.ndx].y,
-        z: z_pos * sim.layer_spacing,
-        i: i,
-        j: j
-      });
-    } else {
-      console.error("NO VTX FOUND FOR  ", i, j)
+  s.mesh.geometry.attributes.position.needsUpdate = true;
+
+  return s;
+}
+
+// DEBUGGING FUNCTIONS
+
+const printLayerMap = (cns: Array<ContactNeighborhood>, wefts: number, warps: number) => {
+
+  const layer_map = [];
+  for (let i = 0; i < wefts; i++) {
+    let row = [];
+    for (let j = 0; j < warps; j++) {
+      row.push(getMvZ({ i, j, id: 0 }, warps, cns));
     }
-
+    layer_map.push(row);
   }
 
-
-
-
-  return warp_vtxs;
+  console.log("LAYER MAP ", layer_map)
 
 }
 
 
-
-// export const areDuplicateWarps = (j: number, j_next: number, draft: Draft) : boolean => {
-//   for(let i = 0; i < wefts(draft.drawdown); i++){
-//     if(draft.drawdown[i][j].getHeddle() != draft.drawdown[i][j_next].getHeddle()) return false;
-//   }
-//   return true;
-// }
+const printYValues = (cns: Array<ContactNeighborhood>, wefts: number, warps: number, mode: boolean) => {
 
 
-/**
- * given a list of weft interlacements it converts
- * @param draft 
- * @param i 
- * @param ilace_last 
- * @param diam 
- * @param ilaces 
- * @param weft_vtxs 
- * @param drawn_positions 
- * @param sim 
- * @param layer_map 
- * @returns 
- */
-export const processWeftInterlacements
-  = (draft: Draft,
-    i: number,
-    diam: number,
-    weft_vtxs: Array<YarnVertex>,
-    sim: SimulationVars,
-    layer_maps: LayerMaps)
-    : Array<YarnVertex> => {
+  console.log((mode) ? "SHOWING WEFT TYPES" : "SHOWING WARP TYPES")
+  const layer_map = [];
+  for (let i = 0; i < wefts; i++) {
+    let row = [];
+    for (let j = 0; j < warps; j++) {
 
-    let indexs_added = [];
-
-    //look across the row and make new interlacements
-    let last_layer = layer_maps.weft[i][0];
-
-    weft_vtxs = addWeftInterlacement(draft, i, 0, last_layer, diam, sim, weft_vtxs).slice();
-    indexs_added.push(0);
-
-    for (let j = 1; j < warps(draft.drawdown); j++) {
-
-      if (layer_maps.warp[i][j] == layer_maps.weft[i][j]) {
-        let layer_id: number = layer_maps.weft[i][j];
-        weft_vtxs = addWeftInterlacement(draft, i, j, layer_id, diam, sim, weft_vtxs).slice();
+      if (mode) {
+        row.push(getMvY({ i, j, id: 0 }, warps, cns) + "-" + getNodeType({ i, j, id: 0 }, warps, cns) + ", " + getMvY({ i, j, id: 1 }, warps, cns) + "-" + getNodeType({ i, j, id: 1 }, warps, cns));
+      } else {
+        row.push(getMvY({ i, j, id: 2 }, warps, cns) + "-" + getNodeType({ i, j, id: 2 }, warps, cns) + ", " + getMvY({ i, j, id: 3 }, warps, cns) + "-" + getNodeType({ i, j, id: 3 }, warps, cns));
       }
 
-    }
-
-    return weft_vtxs;
-
-  }
-
-export const processWarpInterlacement = (draft: Draft, j: number, diam: number, ilaces: Array<TopologyVtx>, warp_vtxs: Array<Array<YarnVertex>>, weft_vtxs: Array<Array<YarnVertex>>, drawn_positions: Array<number>, sim: SimulationVars, layer_map: Array<Array<number>>): Array<Array<YarnVertex>> => {
-
-  let last_id = layer_map[0][j];
-  let just_added = false;
-
-  warp_vtxs = addWarpInterlacement(draft, -1, j, last_id, diam, sim, warp_vtxs, weft_vtxs);
-
-
-  for (let i = 1; i < wefts(draft.drawdown); i++) {
-    if (last_id !== layer_map[i][j]) {
-      //add the top-size of the interlacement
-      if (!just_added) warp_vtxs = addWarpInterlacement(draft, i - 1, j, layer_map[i - 1][j], diam, sim, warp_vtxs, weft_vtxs);
-      warp_vtxs = addWarpInterlacement(draft, i, j, layer_map[i][j], diam, sim, warp_vtxs, weft_vtxs);
-      just_added = true;
-    } else {
-      just_added = false;
 
     }
-    last_id = layer_map[i][j];
-
+    layer_map.push(row);
   }
 
-  warp_vtxs = addWarpInterlacement(draft, wefts(draft.drawdown), j, last_id, diam, sim, warp_vtxs, weft_vtxs);
+  console.log("Y Values MAP ", layer_map)
 
-
-  return warp_vtxs;
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

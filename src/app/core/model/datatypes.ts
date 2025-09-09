@@ -1,12 +1,134 @@
 
 
 import { ViewRef } from "@angular/core";
-import { AnalyzedImage, Color, CompressedDraft, Draft, Loom, LoomSettings, Material, SingleImage } from "adacad-drafting-lib";
+import { AnalyzedImage, Color, Loom, LoomSettings, SingleImage } from "adacad-drafting-lib";
+import * as THREE from 'three';
 import { SubdraftComponent } from "../..//mixer/palette/subdraft/subdraft.component";
 import { ConnectionComponent } from "../../mixer/palette/connection/connection.component";
 import { NoteComponent } from "../../mixer/palette/note/note.component";
 import { OperationComponent } from "../../mixer/palette/operation/operation.component";
 import { MaterialsService } from "../provider/materials.service";
+
+/**
+ * This file contains all definitions of custom types and objects
+ */
+
+
+/*** APPLICATION STATE MANAGEMENT */
+
+
+
+/*****   OBJECTS/TYPES RELATED TO DRAFTS  *******/
+
+
+/**
+ * Drawdown can be used as shorthand for drafts, which are just 2D arrays of Cells
+ */
+export type Drawdown = Array<Array<Cell>>;
+
+
+/**
+ * stores a drawdown along with broader information a draft such
+ * @param id a unique id to refer to this draft, used for linking the draft to screen components
+ * @param gen_name a automatically generated name for this draft (from parent operation)
+ * @param ud_name a user defined name for this draft, which, if it exists, will be used instead of the generated name
+ * @param drawdown the drawdown/interlacement pattern used in this draft
+ * @param rowShuttleMapping the repeating pattern to use to assign draft rows to shuttles (materials)
+ * @param rowSystemMapping the repeating pattern to use to assign draft rows to systems (structual units like layers for instance)
+ * @param colShuttleMapping the repeating pattern to use to assign draft columns to shuttles (materials)
+ * @param colSystemMapping the repeating pattern to use to assign draft columns to systems (structual units like layers for instance)
+ */
+export interface Draft {
+  id: number,
+  gen_name: string,
+  ud_name: string,
+  drawdown: Drawdown,
+  rowShuttleMapping: Array<number>,
+  rowSystemMapping: Array<number>,
+  colShuttleMapping: Array<number>,
+  colSystemMapping: Array<number>,
+}
+
+
+/**
+ * a modified version of the draft that stores the drawdown as a Byte Array to save space
+ */
+export interface CompressedDraft {
+  id: number,
+  gen_name: string,
+  ud_name: string,
+  warps: number;
+  wefts: number;
+  compressed_drawdown: Array<number>,
+  rowShuttleMapping: Array<number>,
+  rowSystemMapping: Array<number>,
+  colShuttleMapping: Array<number>,
+  colSystemMapping: Array<number>,
+}
+
+
+export interface Cell {
+  is_set: boolean,
+  is_up: boolean
+}
+
+
+export interface System {
+  id: number;
+  name: string;
+  notes: string;
+  visible: boolean;
+  in_use: boolean;
+}
+
+
+
+export interface Material {
+  id: number;
+  name: string;
+  insert: boolean; //true is left, false is right
+  visible: boolean;
+  color: string;
+  thickness: number; //percentage of base dims
+  type: number;
+  diameter: number;
+  startLabel?: string;
+  endLabel?: string;
+  notes: string;
+  rgb: { r: number, g: number, b: number }
+
+}
+
+/**
+ * represents a location within a draft.
+ * @param i is the row/weft number (0 being at the top of the drawdown)
+ * @param j is the column/warp number (0 being at the far left of the drawdown)
+ * @param si is the location of this cell within the current view (where the view may be hiding some rows)
+ *        this value can be de-indexed to absolute position in the rows using draft.visibleRows array
+ * @example const i: number = draft.visibleRows[si];
+ */
+export interface Interlacement {
+  i: number;
+  j: number;
+  si: number;
+}
+
+/**
+ * represents a location within a draft as well as the value to be placed at that location
+ * used by Loom to stage updates before settting them
+ * @param i is the row/weft number (0 being at the top of the drawdown)
+ * @param j is the column/warp number (0 being at the far left of the drawdown)
+ * @param val the value to be assigned at the given location
+ */
+
+export interface InterlacementVal {
+  i: number;
+  j: number
+  val: boolean;
+}
+
+
+/***** OBJECTS/TYPES RELATED TO MIXER COMPONENTS ****/
 
 /**
  * this stores a list of drafts created with associated component ids for those drafts, 
@@ -385,132 +507,103 @@ export type YarnCell = number;
 
 
 /**
+ * used in the relaxing round of the simulation to store teh amount of deflection that should be inflicted on any individual vertex. 
+ * ACN - actual contact point
+ * ECN - empty contact point
+ * PCN - potential contact point (there is a weft that float over this point)
+ * VCN - virtual contact point (used only to draw ends of rows for sim when you want full width no matter what)
+ */
+export type CNType = 'ACN' | 'ECN' | 'PCN' | 'VCN';
+
+export type CNIndex = {
+  i: number,
+  j: number,
+  id: number
+}
+
+export type CNFloat = {
+  left: CNIndex,
+  right: CNIndex,
+  face: boolean,
+  edge: boolean
+}
+
+/**
  * represts the point of this yarn within the simulation
  */
+
+export type ContactNeighborhood = {
+  face: boolean,
+  node_type: CNType,
+  mv: { y: number, z: number }
+  ndx: CNIndex
+}
+
+export type Vec3 = {
+  x: number,
+  y: number,
+  z: number
+}
+
+
 export type YarnVertex = {
   x: number,
   y: number,
   z: number,
-  i: number,
-  j: number
+  ndx: CNIndex
 };
 
-/**
- * used in the relaxing round of the simulation to store teh amount of deflection that should be inflicted on any individual vertex. 
- */
-export type Deflection = {
-  dx: number,
-  dy: number,
-  dz: number,
-  i: number,
-  j: number
-};
-
-
-
-
-/**
- * used to calculate arching of floats
- */
-export type YarnFloat = {
-  heddle: boolean,
-  end: number,
-  start: number,
-  layer: number
+export type WeftPath = {
+  system: number,
+  material: number,
+  vtxs: Array<YarnVertex>,
+  pics: Array<number> // the id's of the pics that fit this description
 }
 
-
-
-
-
-export type YarnSimSettings = {
-
-  warp_sett: number, //the distance between warp center points on the loom
-  warp_tension: number, //the tension value of the warp (higher tension, tighter packing)
-  fpack: number, //the force exerted by the packing 
-
-}
-
-export type WarpInterlacementTuple = {
-  j: number,
-  i_top: number,
-  i_bot: number,
-  orientation: boolean; //true = black cell over white, false white over black. 
-}
-
-export type WeftInterlacementTuple = {
-  i: number,
-  j_left: number,
-  j_right: number,
-  orientation: boolean //true = black left white right 
-}
-
-export type InterlacementLayerMap = {
-  i: number,
-  j: number,
-  layer: number
-
-}
-
-//marks a point of interlacement between wefts and warps
-// x -             - x
-// - x === true    x - == false
-export type TopologyVtx = {
-  id: string,
-  i_top: number,
-  i_bot: number,
-  j_left: number,
-  j_right: number,
-  z_pos: number,
-  orientation: boolean;
-
-}
-
-export type WarpRange = {
-  j_left: number,
-  j_right: number
-
-}
-
-export type WarpWeftLayerCount = {
-  ndx: number,
-  count: number,
-  layer: number
-}
-
-export type WarpHeight = {
-  over: number,
-  under: number
+export type WarpPath = {
+  system: number,
+  material: number,
+  vtxs: Array<YarnVertex>
 }
 
 export type SimulationData = {
   draft: Draft,
-  sim: SimulationVars,
-  topo: Array<TopologyVtx>,
-  vtxs: VertexMaps,
-  layer_maps: LayerMaps
+  topo: Array<ContactNeighborhood>,
+  wefts: Array<WeftPath>,
+  warps: Array<WarpPath>
 };
 
 export type SimulationVars = {
+  pack: number,
+  lift_limit: number,
+  use_layers: boolean,
   warp_spacing: number,
   layer_spacing: number,
-  layer_threshold: number,
-  max_interlacement_width: number,
-  max_interlacement_height: number,
-  boundary: number,
+  wefts_as_written: boolean,
+  simulate: boolean,
   radius: number,
   ms: MaterialsService
 }
 
-export type LayerMaps = {
-  warp: Array<Array<number>>,
-  weft: Array<Array<number>>
+export type Particle = {
+  position: THREE.Vector3,
+  previousPosition: THREE.Vector3,
+  acceleration: THREE.Vector3,
+  pinned: boolean,
+  mesh: THREE.Mesh
 }
 
-export type VertexMaps = {
-  warps: Array<Array<YarnVertex>>,
-  wefts: Array<Array<YarnVertex>>
+export type Spring = {
+  pts: Array<THREE.Vector3>,
+  mesh: THREE.Mesh,
+  p1: Particle,
+  p2: Particle,
+  restLength: number,
+  color: number,
+  diameter: number
 }
+
+
 
 
 /**** SETTINGS FOR OTHER FEATURES */

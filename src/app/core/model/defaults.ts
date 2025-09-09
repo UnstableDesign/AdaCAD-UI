@@ -38,7 +38,11 @@ export const defaults = {
   show_advanced_operations: false,
   share_url_base: 'https://adacad.org/?share=',
   force_jacquard_threshold: 10000,
-  largest_lcm_factor: 500
+  largest_lcm_factor: 500,
+  //SIM DEFAULTS
+  wefts_as_written: false,
+  layer_spacing: 10,
+  pack: 100
 
 
 }
