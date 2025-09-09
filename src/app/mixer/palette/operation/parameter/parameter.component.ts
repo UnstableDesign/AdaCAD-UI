@@ -1,41 +1,41 @@
-import { Component, EventEmitter, Input, OnInit, Output, ViewChild, ViewEncapsulation, inject } from '@angular/core';
-import { AbstractControl, UntypedFormControl, ValidationErrors, ValidatorFn, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { MatFormField, MatLabel, MatError, MatHint } from '@angular/material/form-field';
-import { IndexedColorImageInstance,  OpNode} from '../../../../core/model/datatypes';
+import { CdkTextareaAutosize } from '@angular/cdk/text-field';
+import { Component, EventEmitter, Input, NgZone, OnInit, Output, ViewChild, ViewEncapsulation, inject } from '@angular/core';
+import { AbstractControl, FormsModule, ReactiveFormsModule, UntypedFormControl, ValidationErrors, ValidatorFn, Validators } from '@angular/forms';
+import { MatOption } from '@angular/material/autocomplete';
+import { MatButton, MatMiniFabButton } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
+import { MatError, MatFormField, MatHint, MatLabel } from '@angular/material/form-field';
+import { MatInput } from '@angular/material/input';
+import { MatSelect } from '@angular/material/select';
+import { MatTooltip } from '@angular/material/tooltip';
+import { AnalyzedImage } from 'adacad-drafting-lib';
+import { BoolParam, CodeParam, FileParam, NotationTypeParam, NumParam, SelectParam, StringParam } from 'adacad-drafting-lib/operations';
+import { take } from 'rxjs/operators';
+import { IndexedColorImageInstance, OpNode } from '../../../../core/model/datatypes';
+import { MediaService } from '../../../../core/provider/media.service';
 import { OperationDescriptionsService } from '../../../../core/provider/operation-descriptions.service';
 import { OperationService } from '../../../../core/provider/operation.service';
 import { TreeService } from '../../../../core/provider/tree.service';
-import { MediaService } from '../../../../core/provider/media.service';
-import { CdkTextareaAutosize } from '@angular/cdk/text-field';
-import { NgZone } from '@angular/core';
-import { take } from 'rxjs/operators';
 import { ImageeditorComponent } from '../../../../core/ui/imageeditor/imageeditor.component';
-import { MatDialog } from '@angular/material/dialog';
-import { MatInput } from '@angular/material/input';
-import { MatSelect } from '@angular/material/select';
-import { MatOption } from '@angular/material/autocomplete';
-import { MatTooltip } from '@angular/material/tooltip';
-import { MatMiniFabButton, MatButton } from '@angular/material/button';
 import { UploadFormComponent } from '../../../../core/ui/uploads/upload-form/upload-form.component';
-import { AnalyzedImage, BoolParam, CodeParam, FileParam, NotationTypeParam, NumParam, SelectParam, StringParam } from 'adacad-drafting-lib/objects/datatypes.ts';
 
 
 export function regexValidator(nameRe: RegExp): ValidatorFn {
   return (control: AbstractControl): ValidationErrors | null => {
     const globalRegex = new RegExp(nameRe, 'g');
-    const valid =  globalRegex.test(control.value);
-    return !valid ? {forbiddenInput: {value: control.value}} : null;
+    const valid = globalRegex.test(control.value);
+    return !valid ? { forbiddenInput: { value: control.value } } : null;
   };
 }
 
 
 
 @Component({
-    selector: 'app-parameter',
-    templateUrl: './parameter.component.html',
-    styleUrls: ['./parameter.component.scss'],
-    encapsulation: ViewEncapsulation.None,
-    imports: [MatFormField, MatLabel, MatInput, FormsModule, ReactiveFormsModule, MatSelect, MatOption, MatTooltip, MatError, MatMiniFabButton, CdkTextareaAutosize, MatHint, MatButton, UploadFormComponent]
+  selector: 'app-parameter',
+  templateUrl: './parameter.component.html',
+  styleUrls: ['./parameter.component.scss'],
+  encapsulation: ViewEncapsulation.None,
+  imports: [MatFormField, MatLabel, MatInput, FormsModule, ReactiveFormsModule, MatSelect, MatOption, MatTooltip, MatError, MatMiniFabButton, CdkTextareaAutosize, MatHint, MatButton, UploadFormComponent]
 })
 export class ParameterComponent implements OnInit {
   tree = inject(TreeService);
@@ -45,18 +45,18 @@ export class ParameterComponent implements OnInit {
   mediaService = inject(MediaService);
   private _ngZone = inject(NgZone);
 
-  
+
   fc: UntypedFormControl;
   opnode: OpNode;
   name: any;
   refresh_dirty: boolean = false;
 
-  @Input() param:  NumParam | StringParam | SelectParam | BoolParam | FileParam | CodeParam;
-  @Input() opid:  number;
-  @Input() paramid:  number;
-  @Output() onOperationParamChange = new EventEmitter <any>(); 
-  @Output() onFileUpload = new EventEmitter <any>(); 
-  @Output() preventDrag = new EventEmitter <any>(); 
+  @Input() param: NumParam | StringParam | SelectParam | BoolParam | FileParam | CodeParam;
+  @Input() opid: number;
+  @Input() paramid: number;
+  @Output() onOperationParamChange = new EventEmitter<any>();
+  @Output() onFileUpload = new EventEmitter<any>();
+  @Output() preventDrag = new EventEmitter<any>();
 
 
 
@@ -81,67 +81,67 @@ export class ParameterComponent implements OnInit {
 
     this.opnode = this.tree.getOpNode(this.opid);
     this.description = this.op_desc.getParamDescription(this.param.name);
-    if(this.description == undefined || this.description == null) this.description = this.param.dx;
-     //initalize the form controls for the parameters: 
+    if (this.description == undefined || this.description == null) this.description = this.param.dx;
+    //initalize the form controls for the parameters: 
 
-      switch(this.param.type){
-        case 'number':
-          this.numparam = <NumParam> this.param;
-          this.fc = new UntypedFormControl(this.param.value);
-          break;
+    switch (this.param.type) {
+      case 'number':
+        this.numparam = <NumParam>this.param;
+        this.fc = new UntypedFormControl(this.param.value);
+        break;
 
-        case 'boolean':
-          this.boolparam = <BoolParam> this.param;
-          this.fc = new UntypedFormControl(this.param.value);
-          break;
+      case 'boolean':
+        this.boolparam = <BoolParam>this.param;
+        this.fc = new UntypedFormControl(this.param.value);
+        break;
 
-        case 'select':
-          
-          this.selectparam = <SelectParam> this.param;
-          this.fc = new UntypedFormControl(this.param.value);
-          break;
+      case 'select':
 
-        case 'file':
-          this.fileparam = <FileParam> this.param;
-          this.fc = new UntypedFormControl(this.param.value);
-          break;
+        this.selectparam = <SelectParam>this.param;
+        this.fc = new UntypedFormControl(this.param.value);
+        break;
 
-        case 'string':
-          this.stringparam = <StringParam> this.param;
-         // this.fc = new UntypedFormControl(this.stringparam.value, [Validators.required, Validators.pattern((<StringParam>this.param).regex)]);
-          this.fc = new UntypedFormControl(this.stringparam.value, [Validators.required, Validators.pattern((<StringParam>this.param).regex)]);
-    
-         this.fc.valueChanges.forEach(el => {this._refreshDirty()})
-       //  this.fc.valueChanges.forEach(el => {this._refreshDirty(el.trim())})
+      case 'file':
+        this.fileparam = <FileParam>this.param;
+        this.fc = new UntypedFormControl(this.param.value);
+        break;
 
-    
-          break;
+      case 'string':
+        this.stringparam = <StringParam>this.param;
+        // this.fc = new UntypedFormControl(this.stringparam.value, [Validators.required, Validators.pattern((<StringParam>this.param).regex)]);
+        this.fc = new UntypedFormControl(this.stringparam.value, [Validators.required, Validators.pattern((<StringParam>this.param).regex)]);
 
-        case 'notation_toggle':
-          this.boolparam = <NotationTypeParam> this.param;
-          this.fc = new UntypedFormControl(this.param.value);
-          break;
-
-        // case 'draft':
-        //   this.draftparam = <DraftParam> this.param;
-        //   this.fc = new FormControl(this.draftparam.value);
-        //   break;
-         
-       
-      }
+        this.fc.valueChanges.forEach(el => { this._refreshDirty() })
+        //  this.fc.valueChanges.forEach(el => {this._refreshDirty(el.trim())})
 
 
+        break;
 
-   
-  
+      case 'notation_toggle':
+        this.boolparam = <NotationTypeParam>this.param;
+        this.fc = new UntypedFormControl(this.param.value);
+        break;
+
+      // case 'draft':
+      //   this.draftparam = <DraftParam> this.param;
+      //   this.fc = new FormControl(this.draftparam.value);
+      //   break;
+
+
+    }
+
+
+
+
+
 
   }
 
-  _refreshDirty(){
+  _refreshDirty() {
     this.refresh_dirty = true;
   }
 
-  _updateString(val: string){
+  _updateString(val: string) {
     this.refresh_dirty = false;
     this.onParamChange(val);
     return val;
@@ -151,92 +151,92 @@ export class ParameterComponent implements OnInit {
    * changes the view and updates the tree with the new value
    * @param value 
    */
-  onParamChange(value: any){
+  onParamChange(value: any) {
 
-    const opnode: OpNode = <OpNode> this.tree.getNode(this.opid);
+    const opnode: OpNode = <OpNode>this.tree.getNode(this.opid);
 
-    switch(this.param.type){
+    switch (this.param.type) {
 
-      case 'file': 
-      if(value == null) value = 1;
-       opnode.params[this.paramid] = value;
-       //this.fc.setValue(value);
-       this.onOperationParamChange.emit({id: this.paramid, value: value, type: this.param.type});
-       break;
+      case 'file':
+        if (value == null) value = 1;
+        opnode.params[this.paramid] = value;
+        //this.fc.setValue(value);
+        this.onOperationParamChange.emit({ id: this.paramid, value: value, type: this.param.type });
+        break;
 
-      case 'number': 
-       if(value == undefined) value = null;
+      case 'number':
+        if (value == undefined) value = null;
         opnode.params[this.paramid] = value;
         this.fc.setValue(value);
-        this.onOperationParamChange.emit({id: this.paramid, value: value, type: this.param.type});
+        this.onOperationParamChange.emit({ id: this.paramid, value: value, type: this.param.type });
         break;
 
       case 'boolean':
-        if(value == null) value = false;
+        if (value == null) value = false;
         opnode.params[this.paramid] = (value) ? 1 : 0;
         this.fc.setValue(value);
-        this.onOperationParamChange.emit({id: this.paramid, value: value, type: this.param.type});
+        this.onOperationParamChange.emit({ id: this.paramid, value: value, type: this.param.type });
         break;
 
       case 'notation_toggle':
-        if(value == null) value = false;
+        if (value == null) value = false;
         opnode.params[this.paramid] = (value) ? 1 : 0;
         this.fc.setValue(value);
-        this.onOperationParamChange.emit({id: this.paramid, value: value, type: this.param.type});
+        this.onOperationParamChange.emit({ id: this.paramid, value: value, type: this.param.type });
         break;
 
       case 'string':
-        if(value == null) value = '';
+        if (value == null) value = '';
         opnode.params[this.paramid] = value;
         //this.fc.setValue(value); //this is being handled in the form input
-        if(!this.fc.hasError('pattern'))this.onOperationParamChange.emit({id: this.paramid, value: value, type: this.param.type});
+        if (!this.fc.hasError('pattern')) this.onOperationParamChange.emit({ id: this.paramid, value: value, type: this.param.type });
         break;
 
       case 'select':
-        if(value == null) value = 0;
+        if (value == null) value = 0;
         opnode.params[this.paramid] = value;
         this.fc.setValue(value);
-        this.onOperationParamChange.emit({id: this.paramid, value: value, type: this.param.type});
+        this.onOperationParamChange.emit({ id: this.paramid, value: value, type: this.param.type });
         break;
 
       case 'draft':
         opnode.params[this.paramid] = value;
         this.fc.setValue(value);
-        this.onOperationParamChange.emit({id: this.paramid, value: value, type: this.param.type});
+        this.onOperationParamChange.emit({ id: this.paramid, value: value, type: this.param.type });
         break;
     }
 
-   
+
   }
 
 
-  openImageEditor(){
-  
+  openImageEditor() {
+
     const opnode = this.tree.getOpNode(this.opid);
-    const obj = <IndexedColorImageInstance> this.mediaService.getMedia(opnode.params[this.paramid].id);
+    const obj = <IndexedColorImageInstance>this.mediaService.getMedia(opnode.params[this.paramid].id);
 
-    if(obj === undefined || obj.img == undefined || obj.img.image == null ) return;
+    if (obj === undefined || obj.img == undefined || obj.img.image == null) return;
 
-    const dialogRef = this.dialog.open(ImageeditorComponent, {data: {media_id: obj.id, src: this.opnode.name}});
+    const dialogRef = this.dialog.open(ImageeditorComponent, { data: { media_id: obj.id, src: this.opnode.name } });
     dialogRef.afterClosed().subscribe(nothing => {
 
-      let updated_media = <IndexedColorImageInstance> this.mediaService.getMedia( this.opnode.params[this.paramid].id)
-      this.onParamChange({id: this.opnode.params[this.paramid].id, data:updated_media.img});
-   });
+      let updated_media = <IndexedColorImageInstance>this.mediaService.getMedia(this.opnode.params[this.paramid].id)
+      this.onParamChange({ id: this.opnode.params[this.paramid].id, data: updated_media.img });
+    });
   }
 
-  handleError(err: any){
+  handleError(err: any) {
     this.filewarning = err;
     this.clearImagePreview();
 
   }
 
-  replaceImage(){
+  replaceImage() {
     this.clearImagePreview();
     const opnode = this.tree.getOpNode(this.opid);
-    this.mediaService.removeInstance( opnode.params[this.paramid].id)
-    this.opnode.params[this.paramid] = {id:''};
-    this.onOperationParamChange.emit({id: this.paramid, value: this.opnode.params[this.paramid], type: this.param.type});
+    this.mediaService.removeInstance(opnode.params[this.paramid].id)
+    this.opnode.params[this.paramid] = { id: '' };
+    this.onOperationParamChange.emit({ id: this.paramid, value: this.opnode.params[this.paramid], type: this.param.type });
 
   }
 
@@ -247,19 +247,19 @@ export class ParameterComponent implements OnInit {
    * this is called by the upload services "On Data function" which uploads and analyzes the image data in the image and returns it as a image data object
    * @param obj 
    */
-  handleFile(obj: Array<IndexedColorImageInstance>){
+  handleFile(obj: Array<IndexedColorImageInstance>) {
 
     this.filewarning = "";
-    let img:AnalyzedImage = obj[0].img;
+    let img: AnalyzedImage = obj[0].img;
 
-    this.opnode.params[this.paramid] = {id: obj[0].id, data: img};
-    this.onOperationParamChange.emit({id: this.paramid, value: this.opnode.params[this.paramid]});
-    
+    this.opnode.params[this.paramid] = { id: obj[0].id, data: img };
+    this.onOperationParamChange.emit({ id: this.paramid, value: this.opnode.params[this.paramid] });
+
     this.fc.setValue(img.name);
 
-    if(img.warning !== ''){
-        this.filewarning = img.warning;
-    }else{
+    if (img.warning !== '') {
+      this.filewarning = img.warning;
+    } else {
 
       const opnode = this.tree.getOpNode(this.opid);
       //now update the default parameters to the original size 
@@ -276,19 +276,19 @@ export class ParameterComponent implements OnInit {
 
   }
 
-  drawImagePreview(){
+  drawImagePreview() {
 
 
     //check if the image has been removed
     const opnode = this.tree.getOpNode(this.opid);
-    if(opnode.params[this.paramid].id == ''){
+    if (opnode.params[this.paramid].id == '') {
       this.clearImagePreview();
       return;
-    } 
+    }
 
-    const obj = <IndexedColorImageInstance> this.mediaService.getMedia(opnode.params[this.paramid].id);
+    const obj = <IndexedColorImageInstance>this.mediaService.getMedia(opnode.params[this.paramid].id);
 
-   if(obj === null || obj.img == null || obj.img.image == null ) return;
+    if (obj === null || obj.img == null || obj.img.image == null) return;
 
     this.has_image_uploaded = true;
 
@@ -314,39 +314,39 @@ export class ParameterComponent implements OnInit {
 
 
     //   ctx.drawImage(data.image, 0, 0, use_width, use_height);
-  
 
-    
+
+
 
   }
 
 
-  clearImagePreview(){
+  clearImagePreview() {
 
-    this.has_image_uploaded  = false;
+    this.has_image_uploaded = false;
 
-      // const opnode = this.tree.getOpNode(this.opid);
-      // const obj = this.imageService.getImageData(opnode.params[this.paramid].id);
-  
-      // if(obj === undefined) return;
-  
-      //   const data = obj.data;
-  
-      //   const image_div =  document.getElementById('param-image-'+this.opid);
-      //   image_div.style.display = 'none';
-  
-      //   const dims_div =  document.getElementById('param-image-dims-'+this.opid);
-      //   dims_div.innerHTML="";
-  
-      //   const canvas: HTMLCanvasElement =  <HTMLCanvasElement> document.getElementById('preview_canvas-'+this.opid);
-  
+    // const opnode = this.tree.getOpNode(this.opid);
+    // const obj = this.imageService.getImageData(opnode.params[this.paramid].id);
 
-      //   canvas.width = 0;
-      //   canvas.height = 0;
-  
-  
-    
-  
+    // if(obj === undefined) return;
+
+    //   const data = obj.data;
+
+    //   const image_div =  document.getElementById('param-image-'+this.opid);
+    //   image_div.style.display = 'none';
+
+    //   const dims_div =  document.getElementById('param-image-dims-'+this.opid);
+    //   dims_div.innerHTML="";
+
+    //   const canvas: HTMLCanvasElement =  <HTMLCanvasElement> document.getElementById('preview_canvas-'+this.opid);
+
+
+    //   canvas.width = 0;
+    //   canvas.height = 0;
+
+
+
+
   }
 
 

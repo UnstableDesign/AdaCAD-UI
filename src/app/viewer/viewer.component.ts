@@ -1,28 +1,27 @@
-import { Component, Input, ViewChild, SimpleChanges, Output, EventEmitter, inject } from '@angular/core';
-import { createDraft, getDraftAsImage, Draft, getDraftName, warps, wefts } from 'adacad-drafting-lib';
-import { initDraft } from 'adacad-drafting-lib';
+import { Component, EventEmitter, inject, Output, ViewChild } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { MatButton, MatMiniFabButton } from '@angular/material/button';
+import { MatInput } from '@angular/material/input';
+import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
+import { MatSlider, MatSliderThumb } from '@angular/material/slider';
+import { MatToolbar } from '@angular/material/toolbar';
+import { MatTooltip } from '@angular/material/tooltip';
+import { Draft, getDraftName, warps, wefts } from 'adacad-drafting-lib/draft';
+import { AuthService } from '../core/provider/auth.service';
 import { FilesystemService } from '../core/provider/filesystem.service';
 import { MaterialsService } from '../core/provider/materials.service';
-import { TreeService } from '../core/provider/tree.service';
-import { SimulationComponent } from './simulation/simulation.component';
-import { AuthService } from '../core/provider/auth.service';
-import { ZoomService } from '../core/provider/zoom.service';
 import { RenderService } from '../core/provider/render.service';
-import { DraftRenderingComponent } from '../core/ui/draft-rendering/draft-rendering.component';
+import { TreeService } from '../core/provider/tree.service';
 import { ViewerService } from '../core/provider/viewer.service';
-import { MatButton, MatMiniFabButton } from '@angular/material/button';
-import { MatTooltip } from '@angular/material/tooltip';
-import { MatMenuTrigger, MatMenu, MatMenuItem } from '@angular/material/menu';
-import { MatToolbar } from '@angular/material/toolbar';
-import { MatSlider, MatSliderThumb } from '@angular/material/slider';
-import { FormsModule } from '@angular/forms';
-import { MatInput } from '@angular/material/input';
+import { ZoomService } from '../core/provider/zoom.service';
+import { DraftRenderingComponent } from '../core/ui/draft-rendering/draft-rendering.component';
+import { SimulationComponent } from './simulation/simulation.component';
 
 @Component({
-    selector: 'app-viewer',
-    templateUrl: './viewer.component.html',
-    styleUrls: ['./viewer.component.scss'],
-    imports: [MatButton, MatTooltip, MatMenuTrigger, MatMenu, MatMenuItem, DraftRenderingComponent, SimulationComponent, MatToolbar, MatSlider, MatSliderThumb, FormsModule, MatInput, MatMiniFabButton]
+  selector: 'app-viewer',
+  templateUrl: './viewer.component.html',
+  styleUrls: ['./viewer.component.scss'],
+  imports: [MatButton, MatTooltip, MatMenuTrigger, MatMenu, MatMenuItem, DraftRenderingComponent, SimulationComponent, MatToolbar, MatSlider, MatSliderThumb, FormsModule, MatInput, MatMiniFabButton]
 })
 export class ViewerComponent {
   auth = inject(AuthService);
@@ -56,40 +55,40 @@ export class ViewerComponent {
   id: number = -1;
 
 
-  constructor(){
+  constructor() {
 
-      this.vs.showing_id_change$.subscribe(data => {
-        this.id = data;
-        this.redraw(this.id);
-      })
+    this.vs.showing_id_change$.subscribe(data => {
+      this.id = data;
+      this.redraw(this.id);
+    })
 
-      this.vs.update_viewer$.subscribe(data => {
-        this.redraw(this.id);
-      })
+    this.vs.update_viewer$.subscribe(data => {
+      this.redraw(this.id);
+    })
 
   }
 
-ngOnInit(){
-  this.filename = this.files.getCurrentFileName();
-  this.scale = this.zs.getViewerZoom();
-}
-
-
-getVisVariables(){
-  switch(this.vis_mode){
-    case 'sim':
-    case 'draft':
-      return {use_colors: false, floats: false};
-    case 'structure':
-      return {use_colors: false, floats: true};
-    case 'color':
-      return {use_colors: true, floats: true};
+  ngOnInit() {
+    this.filename = this.files.getCurrentFileName();
+    this.scale = this.zs.getViewerZoom();
   }
-}
 
 
-  updateDraftName(){
-    if(this.id == -1) return;
+  getVisVariables() {
+    switch (this.vis_mode) {
+      case 'sim':
+      case 'draft':
+        return { use_colors: false, floats: false };
+      case 'structure':
+        return { use_colors: false, floats: true };
+      case 'color':
+        return { use_colors: true, floats: true };
+    }
+  }
+
+
+  updateDraftName() {
+    if (this.id == -1) return;
     const draft = this.tree.getDraft(this.id);
     draft.ud_name = this.draft_name;
     this.onDraftRename.emit(this.id);
@@ -99,24 +98,24 @@ getVisVariables(){
   /**
    * redraws the current draft, usually following an update from the drawdown
    */
-  redraw(id: number){
-    this.id = id;    
+  redraw(id: number) {
+    this.id = id;
     const draft = this.tree.getDraft(this.id);
 
-    if(draft !== null){
+    if (draft !== null) {
       this.warps = warps(draft.drawdown);
       this.wefts = wefts(draft.drawdown);
     }
 
-    if(this.vis_mode != 'sim') {
-      this.drawDraft(this.id);        
+    if (this.vis_mode != 'sim') {
+      this.drawDraft(this.id);
       this.centerScrollbars();
-  } else this.sim.loadNewDraft(this.id);
- 
-}
+    } else this.sim.loadNewDraft(this.id);
+
+  }
 
 
-  centerScrollbars(){
+  centerScrollbars() {
     // let div = document.getElementById('static_draft_view');
     // let rect = document.getElementById('viewer-scale-container').getBoundingClientRect();
     // div.scrollTop = div.scrollHeight/2;
@@ -127,66 +126,66 @@ getVisVariables(){
     // })
   }
 
-  filenameChange(){
+  filenameChange() {
     const id = this.files.getCurrentFileId();
     this.files.renameFile(id, this.filename);
   }
 
 
-  viewAsSimulation(){
+  viewAsSimulation() {
     this.vis_mode = 'sim';
     this.sim.loadNewDraft(this.id);
 
   }
 
-  viewAsDraft(){
+  viewAsDraft() {
     this.vis_mode = 'draft';
-    this.redraw(this.id);   
+    this.redraw(this.id);
   }
 
-  viewAsStructure(){
+  viewAsStructure() {
     this.vis_mode = 'structure';
-    this.redraw(this.id);   
+    this.redraw(this.id);
   }
 
-  viewAsColor(){
+  viewAsColor() {
     this.vis_mode = 'color';
-    this.redraw(this.id);   
+    this.redraw(this.id);
   }
 
 
 
-  openEditor(){
+  openEditor() {
     this.onOpenEditor.emit(this.id);
   }
 
-  togglePin(){
-    if(this.vs.hasPin() && this.vs.getPin() == this.id){
+  togglePin() {
+    if (this.vs.hasPin() && this.vs.getPin() == this.id) {
       this.vs.clearPin();
-    }else{
+    } else {
       this.vs.setPin(this.id);
     }
   }
 
 
-  clearView(){
+  clearView() {
 
     this.view_rendering.clearAll();
     this.draft_name = 'no draft selected';
-    this.warps = 0; 
+    this.warps = 0;
     this.wefts = 0;
   }
 
-  saveAs(format: string){
+  saveAs(format: string) {
     this.onSave.emit(format);
   }
 
   //when expanded, someone can set the zoom from the main zoom bar
   //this is called, then, to rescale the view
-  zoomChange(){
-    
+  zoomChange() {
 
-    if(this.id == -1) return;
+
+    if (this.id == -1) return;
     this.scale = this.zs.getViewerZoom();
     this.view_rendering.scale = this.scale;
     this.view_rendering.rescale(this.scale);
@@ -198,26 +197,26 @@ getVisVariables(){
    * draw whatever is stored in the draft object to the screen
    * @returns 
    */
-  async drawDraft(id: number) : Promise<any> {
+  async drawDraft(id: number): Promise<any> {
 
-    if(id === -1){
+    if (id === -1) {
       this.clearView();
       return Promise.resolve(false);
     }
 
-    const draft:Draft = this.tree.getDraft(id);
+    const draft: Draft = this.tree.getDraft(id);
     this.draft_name = getDraftName(draft);
 
-    if(draft == null || draft == undefined){
+    if (draft == null || draft == undefined) {
       this.clearView();
       return Promise.resolve(false);
     }
 
 
-    let flags =  {
-      drawdown: true, 
+    let flags = {
+      drawdown: true,
       use_colors: (this.vis_mode == 'color'),
-      use_floats: (this.vis_mode !== 'draft'), 
+      use_floats: (this.vis_mode !== 'draft'),
       show_loom: false
     }
 
@@ -226,11 +225,11 @@ getVisVariables(){
       return Promise.resolve(true);
     })
 
-   
-    
-   }
+
 
   }
+
+}
 
 
 

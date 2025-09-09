@@ -1,34 +1,33 @@
-import { Component, enableProdMode, EventEmitter, HostListener, Input, Output, SimpleChanges, ViewChild, inject } from '@angular/core';
+import { AsyncPipe } from '@angular/common';
+import { Component, enableProdMode, EventEmitter, inject, Input, Output, ViewChild } from '@angular/core';
 import { Auth } from '@angular/fire/auth';
-import { FormControl, NgForm, UntypedFormControl, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { MatDialog } from '@angular/material/dialog';
-import { MatTooltipDefaultOptions, MAT_TOOLTIP_DEFAULT_OPTIONS, MatTooltip } from '@angular/material/tooltip';
-import { BlankdraftModal } from '../core/ui/blankdraft/blankdraft.modal';
-import { DraftNodeProxy,NodeComponentProxy, Point } from '../core/model/datatypes';
-import { defaults, loom_types } from '../core/model/defaults';
-import { DesignmodesService } from '../core/provider/designmodes.service';
-import { FileService } from '../core/provider/file.service';
-import { FilesystemService } from '../core/provider/filesystem.service';
-import { NotesService } from '../core/provider/notes.service';
-import { OperationDescriptionsService } from '../core/provider/operation-descriptions.service';
-import { TreeService } from '../core/provider/tree.service';
-import { WorkspaceService } from '../core/provider/workspace.service';
-import { PaletteComponent } from './palette/palette.component';
-import { MultiselectService } from './provider/multiselect.service';
-import { ViewportService } from './provider/viewport.service';
-import { ZoomService } from '../core/provider/zoom.service';
-import { map, startWith } from 'rxjs/operators';
-import { OperationService } from '../core/provider/operation.service';
-import { SubdraftComponent } from './palette/subdraft/subdraft.component';
-import { Observable } from 'rxjs';
-import { ViewerService } from '../core/provider/viewer.service';
-import { MatAccordion, MatExpansionPanel, MatExpansionPanelHeader, MatExpansionPanelTitle } from '@angular/material/expansion';
+import { FormControl, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { MatButton } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
+import { MatAccordion, MatExpansionPanel, MatExpansionPanelHeader, MatExpansionPanelTitle } from '@angular/material/expansion';
 import { MatFormField, MatLabel } from '@angular/material/form-field';
 import { MatInput } from '@angular/material/input';
 import { MatSlideToggle } from '@angular/material/slide-toggle';
-import { AsyncPipe } from '@angular/common';
-import { Draft, Loom, LoomSettings } from 'adacad-drafting-lib/objects/datatypes.ts';
+import { MAT_TOOLTIP_DEFAULT_OPTIONS, MatTooltip, MatTooltipDefaultOptions } from '@angular/material/tooltip';
+import { Draft, Loom, LoomSettings } from 'adacad-drafting-lib';
+import { Observable } from 'rxjs';
+import { map, startWith } from 'rxjs/operators';
+import { DraftNodeProxy, NodeComponentProxy, Point } from '../core/model/datatypes';
+import { defaults } from '../core/model/defaults';
+import { DesignmodesService } from '../core/provider/designmodes.service';
+import { FileService } from '../core/provider/file.service';
+import { NotesService } from '../core/provider/notes.service';
+import { OperationDescriptionsService } from '../core/provider/operation-descriptions.service';
+import { OperationService } from '../core/provider/operation.service';
+import { TreeService } from '../core/provider/tree.service';
+import { ViewerService } from '../core/provider/viewer.service';
+import { WorkspaceService } from '../core/provider/workspace.service';
+import { ZoomService } from '../core/provider/zoom.service';
+import { BlankdraftModal } from '../core/ui/blankdraft/blankdraft.modal';
+import { PaletteComponent } from './palette/palette.component';
+import { SubdraftComponent } from './palette/subdraft/subdraft.component';
+import { MultiselectService } from './provider/multiselect.service';
+import { ViewportService } from './provider/viewport.service';
 
 //disables some angular checking mechanisms
 enableProdMode();
@@ -48,13 +47,13 @@ export const myCustomTooltipDefaults: MatTooltipDefaultOptions = {
 
 
 @Component({
-    selector: 'app-mixer',
-    templateUrl: './mixer.component.html',
-    styleUrls: ['./mixer.component.scss'],
-    providers: [{ provide: MAT_TOOLTIP_DEFAULT_OPTIONS, useValue: myCustomTooltipDefaults }],
-    imports: [MatAccordion, MatExpansionPanel, MatExpansionPanelHeader, MatExpansionPanelTitle, MatButton, MatTooltip, MatFormField, MatLabel, MatInput, FormsModule, ReactiveFormsModule, MatSlideToggle, PaletteComponent, AsyncPipe]
+  selector: 'app-mixer',
+  templateUrl: './mixer.component.html',
+  styleUrls: ['./mixer.component.scss'],
+  providers: [{ provide: MAT_TOOLTIP_DEFAULT_OPTIONS, useValue: myCustomTooltipDefaults }],
+  imports: [MatAccordion, MatExpansionPanel, MatExpansionPanelHeader, MatExpansionPanelTitle, MatButton, MatTooltip, MatFormField, MatLabel, MatInput, FormsModule, ReactiveFormsModule, MatSlideToggle, PaletteComponent, AsyncPipe]
 })
-export class MixerComponent  {
+export class MixerComponent {
   dm = inject(DesignmodesService);
   private tree = inject(TreeService);
   private fs = inject(FileService);
@@ -77,7 +76,7 @@ export class MixerComponent  {
   @Output() onOpenInEditor: any = new EventEmitter();
 
 
-  origin_options: any = null; 
+  origin_options: any = null;
   loading: boolean = false;
   manual_scroll: boolean = false;
   scrollingSubscription: any;
@@ -90,7 +89,7 @@ export class MixerComponent  {
   op_tree: any = [];
   filteredOptions: Observable<any>;
   myControl: FormControl;
-  search_error: any; 
+  search_error: any;
 
   /// ANGULAR FUNCTIONS
   /**
@@ -101,17 +100,17 @@ export class MixerComponent  {
    */
   constructor() {
 
-      this.myControl = new FormControl();
-   
-      this.classifications = this.op_desc.getOpClassifications();
+    this.myControl = new FormControl();
 
-      this.vp.setAbsolute(defaults.mixer_canvas_width, defaults.mixer_canvas_height); //max size of canvas, evenly divisible by default cell size
+    this.classifications = this.op_desc.getOpClassifications();
 
-      this.op_tree = this.makeOperationsList();
+    this.vp.setAbsolute(defaults.mixer_canvas_width, defaults.mixer_canvas_height); //max size of canvas, evenly divisible by default cell size
+
+    this.op_tree = this.makeOperationsList();
   }
 
 
-  ngOnInit(){
+  ngOnInit() {
 
     this.filteredOptions = this.myControl.valueChanges.pipe(
       startWith(''),
@@ -119,13 +118,13 @@ export class MixerComponent  {
     );
   }
 
-  operationLevelToggleChange(event: any){
+  operationLevelToggleChange(event: any) {
     this.ws.show_advanced_operations = event.checked;
     this.refreshOperations();
 
   }
 
-  refreshOperations(){
+  refreshOperations() {
 
     this.op_tree = this.makeOperationsList();
     this.filteredOptions = this.myControl.valueChanges.pipe(
@@ -134,7 +133,7 @@ export class MixerComponent  {
     );
   }
 
-  makeOperationsList(){
+  makeOperationsList() {
 
     function alphabetical(a, b) {
       if (a.display_name < b.display_name) {
@@ -147,16 +146,16 @@ export class MixerComponent  {
     }
 
 
-    const op_list =  this.classifications.map(classification => {
+    const op_list = this.classifications.map(classification => {
       return {
-        class_name: classification.category_name, 
+        class_name: classification.category_name,
         ops: classification.op_names
           .filter(op => this.op_desc.hasDisplayName(op))
-          .map(op => {return {name: op, display_name:this.op_desc.getDisplayName(op), advanced: this.op_desc.hasOpTag(op, "advanced")}})
+          .map(op => { return { name: op, display_name: this.op_desc.getDisplayName(op), advanced: this.op_desc.hasOpTag(op, "advanced") } })
           .filter(op => {
-            if(this.ws.show_advanced_operations){
+            if (this.ws.show_advanced_operations) {
               return true;
-            }else{
+            } else {
               return op.advanced === false;
             }
           })
@@ -177,19 +176,19 @@ export class MixerComponent  {
   /**
    * adds the first of the filtered list of operations to the workspace
    */
-  public enter(){
+  public enter() {
 
 
     const value = this.myControl.value.toLowerCase();
 
     //run the filter function again without the classification titles
     let tree = this.op_tree.reduce((acc, classification) => {
-        return acc.concat(classification.ops
-          .filter(option => option.display_name.toLowerCase().includes(value)));
+      return acc.concat(classification.ops
+        .filter(option => option.display_name.toLowerCase().includes(value)));
     }, []);
 
     console.log("THIS TREE ", tree)
-    if(tree.length > 0) this.addOp(tree[0].name);
+    if (tree.length > 0) this.addOp(tree[0].name);
 
     this.myControl.setValue('');
 
@@ -201,19 +200,19 @@ export class MixerComponent  {
 
     const filterValue = value.toLowerCase();
 
-    let tree =  this.op_tree.map(classification => {
+    let tree = this.op_tree.map(classification => {
       return {
         class_name: classification.class_name,
         ops: classification.ops
-        .filter(option => option.display_name.toLowerCase().includes(filterValue))
+          .filter(option => option.display_name.toLowerCase().includes(filterValue))
       }
     });
 
-    tree = tree.filter(classification => classification.ops.length > 0 );
+    tree = tree.filter(classification => classification.ops.length > 0);
 
-    if(tree.length == 0){
+    if (tree.length == 0) {
       this.search_error = "no operations match this search"
-    }else{  
+    } else {
       this.search_error = '';
     }
 
@@ -223,97 +222,98 @@ export class MixerComponent  {
 
   }
 
- setScroll(delta: any) {
+  setScroll(delta: any) {
     this.palette.handleScroll(delta);
     this.manual_scroll = true;
-   //this.view_tool.updateViewPort(data);
+    //this.view_tool.updateViewPort(data);
   }
 
-inCat(op_name: string, cat_name: string) {;
-  let parent = this.op_desc.getOpCategory(op_name);
-  return parent == cat_name;
+  inCat(op_name: string, cat_name: string) {
+    ;
+    let parent = this.op_desc.getOpCategory(op_name);
+    return parent == cat_name;
 
-}
-
-
-addOperation(name: string){
-
-  let id = this.palette.addOperation(name);
-  this.myControl.setValue('');
-  const outputs = this.tree.getNonCxnOutputs(id);
-  if(outputs.length > 0) this.vs.setViewer(outputs[0])
-}
+  }
 
 
+  addOperation(name: string) {
 
-onRefreshViewer(){
-  this.vs.updateViewer();
-}
-
-
-performAndUpdateDownstream(obj_id: number){
-  this.palette.performAndUpdateDownstream(obj_id);
-}
+    let id = this.palette.addOperation(name);
+    this.myControl.setValue('');
+    const outputs = this.tree.getNonCxnOutputs(id);
+    if (outputs.length > 0) this.vs.setViewer(outputs[0])
+  }
 
 
-addOp(event: any){
-  this.palette.addOperation(event)
-}
 
-createNewDraft(){
-
-  const dialogRef = this.dialog.open(BlankdraftModal, {
-  });
-
-  dialogRef.afterClosed().subscribe(obj => {
-    if(obj !== undefined && obj !== null) this.newDraftCreated(obj.draft, obj.loom, obj.loom_settings);
- });
-}
-
-/**
- * called when toggled to mixer
- *
- */
-
-/**
- * triggers a series of actions to occur when the view is switched from editor to mixer
- * @param edited_id the id of the draft that was last edited in the other mode. 
- */
-onFocus(edited_draft_id: number){
-
-  if(edited_draft_id == -1 || edited_draft_id == null) return;
-
-  const sd: SubdraftComponent = <SubdraftComponent> this.tree.getComponent(edited_draft_id); 
-  if(sd !== null && sd!== undefined) sd.redrawExistingDraft();
+  onRefreshViewer() {
+    this.vs.updateViewer();
+  }
 
 
-  const outlet_ops_connected = this.tree.getNonCxnOutputs(edited_draft_id);
-  let fns = outlet_ops_connected.map(el => this.performAndUpdateDownstream(el));
-  Promise.all(fns);
-
-  //DO TO MAKE SURE USERS CAN TOGGLE ON MIXER DRAFTS
-  this.dm.selectDraftEditingMode('draw');
-  this.dm.selectPencil('toggle');
-
-}
-
-/**
- * called when toggling away from to mixer
- */
-onClose(){
-
-}
-
- 
-
-zoomChange(zoom_index:any){
-  this.zs.setZoomIndexOnMixer(zoom_index)
-  this.palette.rescale();
-
-}
+  performAndUpdateDownstream(obj_id: number) {
+    this.palette.performAndUpdateDownstream(obj_id);
+  }
 
 
-  changeDesignMode(mode){
+  addOp(event: any) {
+    this.palette.addOperation(event)
+  }
+
+  createNewDraft() {
+
+    const dialogRef = this.dialog.open(BlankdraftModal, {
+    });
+
+    dialogRef.afterClosed().subscribe(obj => {
+      if (obj !== undefined && obj !== null) this.newDraftCreated(obj.draft, obj.loom, obj.loom_settings);
+    });
+  }
+
+  /**
+   * called when toggled to mixer
+   *
+   */
+
+  /**
+   * triggers a series of actions to occur when the view is switched from editor to mixer
+   * @param edited_id the id of the draft that was last edited in the other mode. 
+   */
+  onFocus(edited_draft_id: number) {
+
+    if (edited_draft_id == -1 || edited_draft_id == null) return;
+
+    const sd: SubdraftComponent = <SubdraftComponent>this.tree.getComponent(edited_draft_id);
+    if (sd !== null && sd !== undefined) sd.redrawExistingDraft();
+
+
+    const outlet_ops_connected = this.tree.getNonCxnOutputs(edited_draft_id);
+    let fns = outlet_ops_connected.map(el => this.performAndUpdateDownstream(el));
+    Promise.all(fns);
+
+    //DO TO MAKE SURE USERS CAN TOGGLE ON MIXER DRAFTS
+    this.dm.selectDraftEditingMode('draw');
+    this.dm.selectPencil('toggle');
+
+  }
+
+  /**
+   * called when toggling away from to mixer
+   */
+  onClose() {
+
+  }
+
+
+
+  zoomChange(zoom_index: any) {
+    this.zs.setZoomIndexOnMixer(zoom_index)
+    this.palette.rescale();
+
+  }
+
+
+  changeDesignMode(mode) {
     this.palette.changeDesignMode(mode);
   }
 
@@ -324,7 +324,7 @@ zoomChange(zoom_index:any){
    * which now needs to draw them to the workspace
    * @param drafts 
    */
-  loadDrafts(drafts: any){
+  loadDrafts(drafts: any) {
 
     // const loom:Loom = {
     //   threading:[],
@@ -338,7 +338,7 @@ zoomChange(zoom_index:any){
     //   units: this.ws.units,
     //   frames: this.ws.min_frames,
     //   treadles: this.ws.min_treadles
-      
+
     // }
 
     // let topleft = this.vp.getTopLeft();
@@ -353,15 +353,15 @@ zoomChange(zoom_index:any){
     // let view_width = this.vp.getWidth() * zoom_factor;
 
     // drafts.forEach(draft => {
-      
-      
+
+
     //   const id = this.tree.createNode("draft", null, null);
     //   this.tree.loadDraftData({prev_id: null, cur_id: id,}, draft, loom, loom_settings, true);
     //   this.palette.loadSubDraft(id, draft, null, null, this.zs.getMixerZoom());
 
     //   //position the drafts so that they don't all overlap. 
     //    max_h = (wefts(draft.drawdown)*defaults.mixer_cell_size > max_h) ? wefts(draft.drawdown)*defaults.mixer_cell_size : max_h;
-      
+
     //    let approx_w = warps(draft.drawdown);
 
     //    //300 because each draft is defined as having min-width of 300pm
@@ -369,7 +369,7 @@ zoomChange(zoom_index:any){
 
     //    let dn = this.tree.getNode(id);
     //    dn.component.topleft = {x: cur_w, y: cur_h};
-       
+
     //    cur_w += (w + x_margin);
     //    if(cur_w > view_width){
     //     cur_w = topleft.x + 50;
@@ -382,95 +382,95 @@ zoomChange(zoom_index:any){
 
     // this.palette.addTimelineState();
 
-    
+
   }
 
 
 
-  clearView() : void {
+  clearView(): void {
 
-    if(this.palette !== undefined) this.palette.clearComponents();
+    if (this.palette !== undefined) this.palette.clearComponents();
     this.notes.clear();
     this.vp.clear();
 
   }
-  
+
   ngOnDestroy(): void {
     // this.unsubscribe$.next(0);
     // this.unsubscribe$.complete();
   }
 
 
-  onCopySelections(){
+  onCopySelections() {
     const selections = this.multiselect.copySelections();
     this.selected_nodes_copy = selections;
   }
 
 
-  togglePanMode(){
-    if(this.dm.isSelectedMixerEditingMode('pan')){
+  togglePanMode() {
+    if (this.dm.isSelectedMixerEditingMode('pan')) {
       this.dm.selectMixerEditingMode('move');
-    }else{
+    } else {
       this.dm.selectMixerEditingMode('pan');
     }
     this.palette.designModeChanged();
 
   }
 
-  toggleSelectMode(){
-    if(this.dm.isSelectedMixerEditingMode('marquee')){
+  toggleSelectMode() {
+    if (this.dm.isSelectedMixerEditingMode('marquee')) {
       this.dm.selectMixerEditingMode('move');
 
-    }else{
+    } else {
       this.dm.selectMixerEditingMode('marquee');
 
     }
     this.palette.designModeChanged();
   }
 
-  
 
 
-    operationAdded(name:string){
-      this.palette.addOperation(name);
-    }
+
+  operationAdded(name: string) {
+    this.palette.addOperation(name);
+  }
 
 
-    // printMixer(){
-    //   console.log("PRINT MIXER", "get bounding box of the elements and print")
-    //   var node = document.getElementById('scrollable-container');
-    //     htmlToImage.toPng(node, {width: 16380/2, height: 16380/2})
-    //     .then(function (dataUrl) {
-  
-    //       // var win = window.open('about:blank', "_new");
-    //       // win.document.open();
-    //       // win.document.write([
-    //       //     '<html>',
-    //       //     '   <head>',
-    //       //     '   </head>',
-    //       //     '   <body onload="window.print()" onafterprint="window.close()">',
-    //       //     '       <img src="' + dataUrl + '"/>',
-    //       //     '   </body>',
-    //       //     '</html>'
-    //       // ].join(''));
-    //       // win.document.close();
-  
-    //       const link = document.createElement('a')
-    //       link.href= dataUrl;
-    //       link.download = "mixer.jpg"
-    //       link.click();
-  
-      
-     
-  
-    //     })
-    //     .catch(function (error) {
-    //       console.error('oops, something went wrong!', error);
-    //     });
-      
-    // }
+  // printMixer(){
+  //   console.log("PRINT MIXER", "get bounding box of the elements and print")
+  //   var node = document.getElementById('scrollable-container');
+  //     htmlToImage.toPng(node, {width: 16380/2, height: 16380/2})
+  //     .then(function (dataUrl) {
 
-  
+  //       // var win = window.open('about:blank', "_new");
+  //       // win.document.open();
+  //       // win.document.write([
+  //       //     '<html>',
+  //       //     '   <head>',
+  //       //     '   </head>',
+  //       //     '   <body onload="window.print()" onafterprint="window.close()">',
+  //       //     '       <img src="' + dataUrl + '"/>',
+  //       //     '   </body>',
+  //       //     '</html>'
+  //       // ].join(''));
+  //       // win.document.close();
+
+  //       const link = document.createElement('a')
+  //       link.href= dataUrl;
+  //       link.download = "mixer.jpg"
+  //       link.click();
+
+
+
+
+  //     })
+  //     .catch(function (error) {
+  //       console.error('oops, something went wrong!', error);
+  //     });
+
+  // }
+
+
 
   /**
    * Updates the canvas based on the weave view.
@@ -483,37 +483,37 @@ zoomChange(zoom_index:any){
   /**
    * Updates the canvas based on the weave view.
    */
-   public zoomChangeExternal(event: any) {
+  public zoomChangeExternal(event: any) {
     this.palette.rescale();
   }
 
 
 
 
-  public notesChanged(e:any) {
+  public notesChanged(e: any) {
     console.log(e);
   }
 
 
 
-  public createNote(note){
+  public createNote(note) {
     this.palette.createNote(note);
   }
 
-  public createNewNote(){
+  public createNewNote() {
     this.palette.createNote(null);
   }
   /**
    * called when the user adds a new draft from the sidebar OR when a new draft is created from the editor
    * @param obj 
    */
-  public newDraftCreated(draft: Draft, loom: Loom, loom_settings: LoomSettings): number{
+  public newDraftCreated(draft: Draft, loom: Loom, loom_settings: LoomSettings): number {
     const id = this.tree.createNode("draft", null, null);
     const tr: Point = this.palette.calculateInitialLocation();
     let nodep: NodeComponentProxy = {
       node_id: id,
-      type: 'draft', 
-      topleft:  {x: tr.x, y: tr.y}
+      type: 'draft',
+      topleft: { x: tr.x, y: tr.y }
     }
 
     let dnproxy: DraftNodeProxy = {
@@ -530,24 +530,24 @@ zoomChange(zoom_index:any){
       scale: 1
     }
 
-    this.tree.loadDraftData({prev_id: null, cur_id: id,}, draft, loom, loom_settings, true, 1, !this.ws.hide_mixer_drafts);
+    this.tree.loadDraftData({ prev_id: null, cur_id: id, }, draft, loom, loom_settings, true, 1, !this.ws.hide_mixer_drafts);
     this.palette.loadSubDraft(id, draft, nodep, dnproxy);
     return id;
   }
 
-  public loadSubDraft(id: number, d: Draft, nodep: NodeComponentProxy, draftp: DraftNodeProxy){
+  public loadSubDraft(id: number, d: Draft, nodep: NodeComponentProxy, draftp: DraftNodeProxy) {
     this.palette.loadSubDraft(id, d, nodep, draftp);
   }
 
-  loadOperation(id: number, name: string, params: Array<any>, inlets: Array<any>, topleft:Point){
+  loadOperation(id: number, name: string, params: Array<any>, inlets: Array<any>, topleft: Point) {
     this.palette.loadOperation(id, name, params, inlets, topleft)
   }
 
-  loadConnection(id: number){
+  loadConnection(id: number) {
     this.palette.loadConnection(id);
   }
 
-  centerView(){
+  centerView() {
     this.palette.centerView();
   }
 
@@ -561,41 +561,41 @@ zoomChange(zoom_index:any){
    * there is a modal showing materials open and update it if there is
    */
   public materialChange() {
-    
+
     this.palette.redrawAllSubdrafts();
 
 
- }
+  }
 
- public redrawAllSubdrafts(){
-  this.palette.redrawAllSubdrafts();
- }
-
-
-
-/**
- * the drafts stored in adacad are ALWAYs oriented with 0,0 as the top left corner
- * any origin change is merely the rendering flipping the orientation. 
- * when the global settings change, the data itself does NOT need to change, only the rendering
- * @param e 
- */
-originChange(value: number){
-
-  this.palette.redrawAllSubdrafts(); //force a redraw so that the weft/warp system info is up to date
-
-}
+  public redrawAllSubdrafts() {
+    this.palette.redrawAllSubdrafts();
+  }
 
 
-/**
- * communicates an id of a subdraft upstream to open it within the editor 
- * @param id 
- */
-openDraftInEditor(id: number){
-  this.onOpenInEditor.emit(id);
-}
 
-explode(){
-  this.palette.explode();
-}
+  /**
+   * the drafts stored in adacad are ALWAYs oriented with 0,0 as the top left corner
+   * any origin change is merely the rendering flipping the orientation. 
+   * when the global settings change, the data itself does NOT need to change, only the rendering
+   * @param e 
+   */
+  originChange(value: number) {
+
+    this.palette.redrawAllSubdrafts(); //force a redraw so that the weft/warp system info is up to date
+
+  }
+
+
+  /**
+   * communicates an id of a subdraft upstream to open it within the editor 
+   * @param id 
+   */
+  openDraftInEditor(id: number) {
+    this.onOpenInEditor.emit(id);
+  }
+
+  explode() {
+    this.palette.explode();
+  }
 
 }

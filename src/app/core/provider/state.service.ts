@@ -1,14 +1,14 @@
 import { Injectable, inject } from '@angular/core';
 import { getAuth } from '@angular/fire/auth';
+import { Draft } from 'adacad-drafting-lib';
 import { Observable } from 'rxjs';
 import { SaveObj } from '../model/datatypes';
 import { FilesystemService } from './filesystem.service';
-import { Draft } from 'adacad-drafting-lib/objects/datatypes.ts';
 /**
  * stores a state within the undo/redo timeline
  * weaver uses draft, mixer uses ada
  */
- interface HistoryState {
+interface HistoryState {
   draft: Draft;
   ada: SaveObj;
 }
@@ -46,7 +46,7 @@ export class StateService {
 
 
 
-  clearTimeline(){
+  clearTimeline() {
     this.active_id = 0;
     this.undo_disabled = true;
     this.redo_disabled = true;
@@ -55,39 +55,39 @@ export class StateService {
   }
 
 
-  printValue(value: any){
+  printValue(value: any) {
     console.log("printing", value);
   }
 
 
-  validateWriteData(cur_state: any) : any {
+  validateWriteData(cur_state: any): any {
     return cur_state;
   }
 
 
-  public getFileSize(name: string, obj: any) : number {
+  public getFileSize(name: string, obj: any): number {
     const str = JSON.stringify(obj);
     const size = new Blob([str]).size;
-    console.log(name+" is ", size);
+    console.log(name + " is ", size);
     return size;
 
   }
 
-  public hasTimeline(){
-    if(this.timeline.length > 0) return true;
+  public hasTimeline() {
+    if (this.timeline.length > 0) return true;
     return false;
   }
 
 
 
-/**
- * this is called every-time there is an action that needs saving on the stack. 
- * this includes the creation of a new file
- */
-  public addMixerHistoryState(ada:{json: string, file: SaveObj}){
+  /**
+   * this is called every-time there is an action that needs saving on the stack. 
+   * this includes the creation of a new file
+   */
+  public addMixerHistoryState(ada: { json: string, file: SaveObj }) {
     let err = 0;
 
-  
+
     // this.getFileSize("version", ada.file.version);
     // this.getFileSize("workspace", ada.file.workspace);
     // this.getFileSize("type", ada.file.type);
@@ -104,38 +104,38 @@ export class StateService {
 
 
 
-    if(this.files.connected){
-  
+    if (this.files.connected) {
 
-    const auth = getAuth();
-    const user = auth.currentUser;
 
-    if(user !== null){
-      //do a quick correction for any undefined loom settings
-      ada.file.draft_nodes.forEach(dn => {
-        if(dn.loom_settings == undefined){
-          dn.loom_settings = null;
+      const auth = getAuth();
+      const user = auth.currentUser;
+
+      if (user !== null) {
+        //do a quick correction for any undefined loom settings
+        ada.file.draft_nodes.forEach(dn => {
+          if (dn.loom_settings == undefined) {
+            dn.loom_settings = null;
+          }
+        })
+
+
+
+        if (this.getFileSize("file", ada.file) < 16000000) {
+          this.files.writeFileData(this.files.getCurrentFileId(), ada.file);
+          this.files.writeFileMetaData(user.uid, this.files.getCurrentFileId(), this.files.getCurrentFileName(), this.files.getCurrentFileDesc(), this.files.getCurrentFileFromShare());
         }
-      })
+        else {
+          console.error("WRITE TOO LARGE");
+          err = 1;
 
-
-      
-      if(this.getFileSize("file", ada.file) < 16000000){
-        this.files.writeFileData(this.files.getCurrentFileId(), ada.file);
-        this.files.writeFileMetaData(user.uid, this.files.getCurrentFileId(), this.files.getCurrentFileName(), this.files.getCurrentFileDesc(), this.files.getCurrentFileFromShare());
+        }
       }
-      else{
-        console.error("WRITE TOO LARGE");
-        err = 1;
-
-      } 
-    } 
+    }
+    return err;
   }
-  return err;
-}
 
 
-public writeStateToTimeline(ada:{json: string, file: SaveObj}){
+  public writeStateToTimeline(ada: { json: string, file: SaveObj }) {
     var state = {
       draft: null,
       ada: {
@@ -149,10 +149,10 @@ public writeStateToTimeline(ada:{json: string, file: SaveObj}){
         ops: ada.file.ops.slice(),
         notes: ada.file.notes.slice(),
         materials: ada.file.materials.slice(),
-        indexed_image_data: ada.file.indexed_image_data.slice() 
+        indexed_image_data: ada.file.indexed_image_data.slice()
       }
     }
-  if(this.active_id > 0){
+    if (this.active_id > 0) {
 
       this.timeline.splice(0, this.active_id);
       this.active_id = 0;
@@ -160,51 +160,51 @@ public writeStateToTimeline(ada:{json: string, file: SaveObj}){
 
     }
 
-  //add the new element to position 0
-  var len = this.timeline.unshift(state);
-  if(len > this.max_size) this.timeline.pop();
-  if(this.timeline.length > 1) this.undo_disabled = false;
-  
-}
-
-
-/**
- * called on redo in mixer
- * @returns returns the ada file to reload
- */  
-public restoreNextMixerHistoryState(): SaveObj{
-
-    if(this.active_id == 0) return; 
-
-  	this.active_id--;
-
-    if(this.active_id == 0) this.redo_disabled = true;
-
-    return this.timeline[this.active_id].ada;
-    
+    //add the new element to position 0
+    var len = this.timeline.unshift(state);
+    if (len > this.max_size) this.timeline.pop();
+    if (this.timeline.length > 1) this.undo_disabled = false;
 
   }
 
 
-    /**
-   * called on undo in mixer
-   * @returns returns the draft to load
+  /**
+   * called on redo in mixer
+   * @returns returns the ada file to reload
    */
-     public restorePreviousMixerHistoryState():SaveObj{
+  public restoreNextMixerHistoryState(): SaveObj {
 
-      this.active_id++;
- 
-       //you've hit the end of available states to restore
-      if(this.active_id >= this.timeline.length){
-         this.active_id--;
-         this.undo_disabled = true;
-         return null; 
-      } 
- 
-      this.redo_disabled = false;
-      return this.timeline[this.active_id].ada;
-       
-   }
+    if (this.active_id == 0) return;
+
+    this.active_id--;
+
+    if (this.active_id == 0) this.redo_disabled = true;
+
+    return this.timeline[this.active_id].ada;
+
+
+  }
+
+
+  /**
+ * called on undo in mixer
+ * @returns returns the draft to load
+ */
+  public restorePreviousMixerHistoryState(): SaveObj {
+
+    this.active_id++;
+
+    //you've hit the end of available states to restore
+    if (this.active_id >= this.timeline.length) {
+      this.active_id--;
+      this.undo_disabled = true;
+      return null;
+    }
+
+    this.redo_disabled = false;
+    return this.timeline[this.active_id].ada;
+
+  }
 
 
 }

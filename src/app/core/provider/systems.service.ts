@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
-import { Draft, System } from 'adacad-drafting-lib/objects/datatypes.ts';
-import { createSystem } from 'adacad-drafting-lib/objects';
+import { createSystem, Draft, System } from 'adacad-drafting-lib';
+
 
 @Injectable({
   providedIn: 'root'
@@ -11,21 +11,21 @@ import { createSystem } from 'adacad-drafting-lib/objects';
  */
 export class SystemsService {
 
-  
+
   weft_systems: Array<System> = [];
   warp_systems: Array<System> = [];
 
-  constructor() { 
+  constructor() {
 
-    for(let i = 0; i < 26; i++){
+    for (let i = 0; i < 26; i++) {
       const weft = createSystem({});
-      weft.id = i; 
-      weft.name = String.fromCharCode(i+97);
+      weft.id = i;
+      weft.name = String.fromCharCode(i + 97);
       this.weft_systems.push(weft);
 
       const warp = createSystem({});
-      warp.id = i; 
-      warp.name = ""+(i+1);
+      warp.id = i;
+      warp.name = "" + (i + 1);
       this.warp_systems.push(warp);
     }
 
@@ -51,19 +51,19 @@ export class SystemsService {
 
   }
 
-  getWeftSystem(id: number) : System{
+  getWeftSystem(id: number): System {
     return this.weft_systems[id];
   }
 
-  getWarpSystem(id: number) : System{
+  getWarpSystem(id: number): System {
     return this.warp_systems[id];
   }
 
-  getFirstWarpSystem() : System {
+  getFirstWarpSystem(): System {
     return this.warp_systems[0];
   }
 
-  getFirstWeftSystem() : System {
+  getFirstWeftSystem(): System {
     return this.weft_systems[0];
   }
 
@@ -77,40 +77,40 @@ export class SystemsService {
 
   }
 
-  weftSystemIsVisible(id: number){
+  weftSystemIsVisible(id: number) {
     return this.weft_systems[id].visible;
   }
 
-  warpSystemIsVisible(id: number){
+  warpSystemIsVisible(id: number) {
     return this.warp_systems[id].visible;
   }
 
-    /**
-   * looks for the next in use system after the ndx submitted.
-   * @param ndx 
-   */
-    getNextWarpSystemFrom(ndx: number): number{
-      return ndx + 1 ;
-      // const in_use = this.warp_systems.filter(el => el.in_use);
-      // let use_ndx = in_use.findIndex(el => el.id === ndx);
-      // use_ndx++;
-  
-      // if(use_ndx < in_use.length){
-      //   return in_use[use_ndx].id;
-      // }else{
-      //   //get the last used number an dincrement one
-      //   this.warp_systems[use_ndx].in_use = true;
-      //   return use_ndx;
-      // }
+  /**
+ * looks for the next in use system after the ndx submitted.
+ * @param ndx 
+ */
+  getNextWarpSystemFrom(ndx: number): number {
+    return ndx + 1;
+    // const in_use = this.warp_systems.filter(el => el.in_use);
+    // let use_ndx = in_use.findIndex(el => el.id === ndx);
+    // use_ndx++;
 
-    }
-  
+    // if(use_ndx < in_use.length){
+    //   return in_use[use_ndx].id;
+    // }else{
+    //   //get the last used number an dincrement one
+    //   this.warp_systems[use_ndx].in_use = true;
+    //   return use_ndx;
+    // }
+
+  }
+
 
   /**
    * looks for the next in use system after the ndx submitted.
    * @param ndx 
    */
-  getNextWeftSystemFrom(ndx: number): number{
+  getNextWeftSystemFrom(ndx: number): number {
     return ndx + 1;
     // const in_use = this.weft_systems.filter(el => el.in_use);
     // let use_ndx = in_use.findIndex(el => el.id == ndx);
@@ -129,21 +129,21 @@ export class SystemsService {
    * checks if we should move to the next system id or create a new empty system.
    * @returns the id of the created or empty system to add to
   */
-   getNextWarpSystem(ndx: number, draft: Draft): number{
+  getNextWarpSystem(ndx: number, draft: Draft): number {
 
     var system_id = draft.colSystemMapping[ndx];
     // //are any other rows assigned to this system or is this the first
-    const count: number = draft.colSystemMapping.reduce((acc,val) => {
-      if(val === system_id){
+    const count: number = draft.colSystemMapping.reduce((acc, val) => {
+      if (val === system_id) {
         acc = acc + 1;
-      } 
+      }
       return acc;
     }, 0);
 
     //this is the only one assigned
-    if(count === 1){
+    if (count === 1) {
       return 0; // return the starting index
-    }else{
+    } else {
       return this.getNextWarpSystemFrom(system_id);
     }
 
@@ -153,39 +153,39 @@ export class SystemsService {
    * checks if we should move to the next system id or create a new empty system.
    * @returns the id of the created or empty system to add to
   */
-   getNextWeftSystem(ndx: number, draft: Draft): number{
+  getNextWeftSystem(ndx: number, draft: Draft): number {
 
     var system_id = draft.rowSystemMapping[ndx];
     //are any other rows assigned to this system or is this the first
-    const count: number = draft.rowSystemMapping.reduce((acc,val) => {
-      if(val === system_id){
+    const count: number = draft.rowSystemMapping.reduce((acc, val) => {
+      if (val === system_id) {
         acc = acc + 1;
-      } 
+      }
       return acc;
     }, 0);
 
 
     //this is the only one assigned
-    if(count === 1){
+    if (count === 1) {
       return 0; // return the starting index
-    }else{
+    } else {
       return this.getNextWeftSystemFrom(system_id);
     }
 
   }
 
-  getWeftSystemCode(id: number) : string {
+  getWeftSystemCode(id: number): string {
     var system = this.getWeftSystem(id);
-    if(system === undefined) return "err";
+    if (system === undefined) return "err";
     return system.name;
   }
 
   getWarpSystemCode(id: number) {
 
     var system = this.getWarpSystem(id);
-    if(system === undefined) return "err";
-   return  system.name;
- }
+    if (system === undefined) return "err";
+    return system.name;
+  }
 
 
 

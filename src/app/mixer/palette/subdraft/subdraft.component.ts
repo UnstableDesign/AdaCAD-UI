@@ -1,7 +1,7 @@
-import { Component, EventEmitter, Input, OnInit, Output, SimpleChanges, ViewChild, ViewRef, inject } from '@angular/core';
+import { CdkDrag, CdkDragHandle, CdkDragMove, CdkDragStart } from '@angular/cdk/drag-drop';
+import { Component, EventEmitter, Input, OnInit, Output, SimpleChanges, ViewChild, inject } from '@angular/core';
+import { Draft, Interlacement, LoomSettings, isUp, warps, wefts } from 'adacad-drafting-lib';
 import { DraftNode, Point } from '../../../core/model/datatypes';
-import {Draft, Interlacement, LoomSettings } from 'adacad-drafting-lib'
-import { isUp, warps, wefts } from 'adacad-drafting-lib';
 import { DesignmodesService } from '../../../core/provider/designmodes.service';
 import { TreeService } from '../../../core/provider/tree.service';
 import { ViewerService } from '../../../core/provider/viewer.service';
@@ -10,17 +10,15 @@ import { ZoomService } from '../../../core/provider/zoom.service';
 import { LayersService } from '../../provider/layers.service';
 import { MultiselectService } from '../../provider/multiselect.service';
 import { ViewportService } from '../../provider/viewport.service';
-import { DraftContainerComponent } from '../draftcontainer/draftcontainer.component';
-import { CdkDragMove, CdkDragStart, CdkDrag, CdkDragHandle } from '@angular/cdk/drag-drop';
-import { MatMenuTrigger } from '@angular/material/menu';
 import { ConnectionComponent } from '../connection/connection.component';
+import { DraftContainerComponent } from '../draftcontainer/draftcontainer.component';
 
 
 @Component({
-    selector: 'app-subdraft',
-    templateUrl: './subdraft.component.html',
-    styleUrls: ['./subdraft.component.scss'],
-    imports: [CdkDrag, CdkDragHandle, DraftContainerComponent]
+  selector: 'app-subdraft',
+  templateUrl: './subdraft.component.html',
+  styleUrls: ['./subdraft.component.scss'],
+  imports: [CdkDrag, CdkDragHandle, DraftContainerComponent]
 })
 
 
@@ -38,26 +36,26 @@ export class SubdraftComponent implements OnInit {
 
   @ViewChild('draftcontainer') draftcontainer: DraftContainerComponent;
 
-  @Input()  id: number; 
-  @Input()  scale: number;
-  @Input()  draft: Draft;
-  @Input()  topleft: Point;
-  
+  @Input() id: number;
+  @Input() scale: number;
+  @Input() draft: Draft;
+  @Input() topleft: Point;
 
-  @Output() onSubdraftMove = new EventEmitter <any>(); 
-  @Output() onSubdraftDrop = new EventEmitter <any>(); 
-  @Output() onSubdraftStart = new EventEmitter <any>(); 
-  @Output() onDeleteCalled = new EventEmitter <any>(); 
-  @Output() onDuplicateCalled = new EventEmitter <any>(); 
-  @Output() onConnectionMade = new EventEmitter <any>(); 
-  @Output() onConnectionRemoved = new EventEmitter <any>(); 
-  @Output() onDesignAction = new  EventEmitter <any>();
-  @Output() onConnectionStarted:any = new EventEmitter<any>();
-  @Output() onSubdraftViewChange:any = new EventEmitter<any>();
-  @Output() createNewSubdraftFromEdits:any = new EventEmitter<any>();
-  @Output() onNameChange:any = new EventEmitter<any>();
-  @Output() onOpenInEditor:any = new EventEmitter<any>();
-  @Output() onRedrawOutboundConnections = new EventEmitter <any> ();
+
+  @Output() onSubdraftMove = new EventEmitter<any>();
+  @Output() onSubdraftDrop = new EventEmitter<any>();
+  @Output() onSubdraftStart = new EventEmitter<any>();
+  @Output() onDeleteCalled = new EventEmitter<any>();
+  @Output() onDuplicateCalled = new EventEmitter<any>();
+  @Output() onConnectionMade = new EventEmitter<any>();
+  @Output() onConnectionRemoved = new EventEmitter<any>();
+  @Output() onDesignAction = new EventEmitter<any>();
+  @Output() onConnectionStarted: any = new EventEmitter<any>();
+  @Output() onSubdraftViewChange: any = new EventEmitter<any>();
+  @Output() createNewSubdraftFromEdits: any = new EventEmitter<any>();
+  @Output() onNameChange: any = new EventEmitter<any>();
+  @Output() onOpenInEditor: any = new EventEmitter<any>();
+  @Output() onRedrawOutboundConnections = new EventEmitter<any>();
 
 
 
@@ -80,23 +78,23 @@ export class SubdraftComponent implements OnInit {
 
   ink = 'neq'; //can be or, and, neq, not, splice
 
-  counter:number  =  0; // keeps track of how frequently to call the move functions
- 
-  counter_limit: number = 50;  //this sets the threshold for move calls, lower number == more calls
- 
-  last_ndx:Interlacement = {i: -1, j:-1, si: -1}; //used to check if we should recalculate a move operation
+  counter: number = 0; // keeps track of how frequently to call the move functions
 
-  moving: boolean  = false;
- 
+  counter_limit: number = 50;  //this sets the threshold for move calls, lower number == more calls
+
+  last_ndx: Interlacement = { i: -1, j: -1 }; //used to check if we should recalculate a move operation
+
+  moving: boolean = false;
+
   disable_drag: boolean = false;
 
   is_preview: boolean = false;
- 
+
   zndx = 0;
 
   has_active_connection: boolean = false;
 
-  set_connectable:boolean = false;
+  set_connectable: boolean = false;
 
   // draft_visible: boolean = true;
 
@@ -109,32 +107,32 @@ export class SubdraftComponent implements OnInit {
   offset: Point = null;
 
   constructor() {
-      const layer = this.layer;
- 
+    const layer = this.layer;
 
-      this.zndx = layer.createLayer();
+
+    this.zndx = layer.createLayer();
 
 
 
   }
 
-  ngOnInit(){
+  ngOnInit() {
 
-    if(!this.is_preview) this.parent_id = this.tree.getSubdraftParent(this.id);
+    if (!this.is_preview) this.parent_id = this.tree.getSubdraftParent(this.id);
     const tl: Point = this.viewport.getTopRight();
-    const tl_offset = {x: tl.x, y: tl.y};
+    const tl_offset = { x: tl.x, y: tl.y };
 
-    if(this.topleft.x === 0 && this.topleft.y === 0) this.setPosition(tl_offset);
+    if (this.topleft.x === 0 && this.topleft.y === 0) this.setPosition(tl_offset);
 
-    if(!this.is_preview) this.viewport.addObj(this.id, this.interlacement);
+    if (!this.is_preview) this.viewport.addObj(this.id, this.interlacement);
 
- 
-    const dn:DraftNode = <DraftNode> this.tree.getNode(this.id);
+
+    const dn: DraftNode = <DraftNode>this.tree.getNode(this.id);
     this.use_colors = dn.render_colors;
-    
 
 
-    if(this.tree.isSibling(this.id)) this.disableDrag();
+
+    if (this.tree.isSibling(this.id)) this.disableDrag();
 
 
   }
@@ -145,27 +143,27 @@ export class SubdraftComponent implements OnInit {
 
 
 
-  let sd_container = document.getElementById('scale-'+this.id);
-  sd_container.style.transform = 'none'; //negate angulars default positioning mechanism
-  sd_container.style.top =  this.topleft.y+"px";
-  sd_container.style.left =  this.topleft.x+"px";
-  this.onRedrawOutboundConnections.emit(this.id);
+    let sd_container = document.getElementById('scale-' + this.id);
+    sd_container.style.transform = 'none'; //negate angulars default positioning mechanism
+    sd_container.style.top = this.topleft.y + "px";
+    sd_container.style.left = this.topleft.x + "px";
+    this.onRedrawOutboundConnections.emit(this.id);
 
 
   }
 
-  ngOnChanges(changes: SimpleChanges){
-  
-    
+  ngOnChanges(changes: SimpleChanges) {
+
+
     //if scale is changed, automatically call the function to rescale
-    if(changes['scale']){
+    if (changes['scale']) {
       this.rescale().catch(e => console.log(e))
     }
 
     //if something new is assigned to the draft value for this subdraft, draw it. 
-    if(changes['draft']){      
+    if (changes['draft']) {
 
-      if(this.draftcontainer){
+      if (this.draftcontainer) {
         this.draftcontainer.drawDraft(changes['draft'].currentValue);
       }
     }
@@ -175,94 +173,94 @@ export class SubdraftComponent implements OnInit {
   /**
    * this is called when the draft container displaying this draft has had a size change 
    */
-  updateOutboundConnections(){
+  updateOutboundConnections() {
     this.onRedrawOutboundConnections.emit(this.id);
   }
 
 
- 
 
-  nameChange(){
+
+  nameChange() {
     this.onNameChange.emit(this.id);
   }
 
 
-/**
- * this is called when the global workspace is rescaled. 
- * @returns 
- */
-  rescale() : Promise<boolean>{
+  /**
+   * this is called when the global workspace is rescaled. 
+   * @returns 
+   */
+  rescale(): Promise<boolean> {
 
     return Promise.resolve(true)
 
   }
 
   /**called when bounds change, updates the global view port */
-  updateViewport(topleft: Point){
+  updateViewport(topleft: Point) {
     // this.interlacement = utilInstance.resolvePointToAbsoluteNdx(topleft, this.scale);
     // this.viewport.updatePoint(this.id, this.interlacement);
 
   }
 
-  updateConnectionStyling(){
+  updateConnectionStyling() {
 
-      //remove the selected class for all connections
-      let cxns = this.tree.getConnections();
-      for(let cxn of cxns){
-        if(cxn !== null){
-          cxn.updateConnectionStyling(false);
-        }
+    //remove the selected class for all connections
+    let cxns = this.tree.getConnections();
+    for (let cxn of cxns) {
+      if (cxn !== null) {
+        cxn.updateConnectionStyling(false);
       }
+    }
 
-      const outputs = this.tree.getOutputs(this.id);
+    const outputs = this.tree.getOutputs(this.id);
 
-      //add the class selected to any of the connections going into and out of this node
-      let ios = outputs.concat(this.tree.getInputs(this.id));
-      for(let io of ios){
-        let cxn = <ConnectionComponent> this.tree.getComponent(io);
-        if(cxn !== null) cxn.updateConnectionStyling(true)
-      }
+    //add the class selected to any of the connections going into and out of this node
+    let ios = outputs.concat(this.tree.getInputs(this.id));
+    for (let io of ios) {
+      let cxn = <ConnectionComponent>this.tree.getComponent(io);
+      if (cxn !== null) cxn.updateConnectionStyling(true)
+    }
 
   }
 
 
 
 
-  toggleMultiSelection(e: any){
+  toggleMultiSelection(e: any) {
 
     // console.log("TOGGLE MULTI")
     // this.onFocus.emit(this.id);
     this.updateConnectionStyling();
-        this.vs.setViewer(this.id);
+    this.vs.setViewer(this.id);
 
 
-    if(e.shiftKey){
+    if (e.shiftKey) {
       this.multiselect.toggleSelection(this.id, this.topleft);
-    }else{
+    } else {
       this.multiselect.clearSelections();
     }
   }
-  
 
-  connectionEnded(){
+
+  connectionEnded() {
     this.selecting_connection = false;
     this.enableDrag();
   }
 
-  connectionStarted(obj){
+  connectionStarted(obj) {
     let event = obj.event;
     let childid = obj.id;
 
-    if(this.selecting_connection == true){
+    if (this.selecting_connection == true) {
       this.selecting_connection = false;
       this.onConnectionStarted.emit({
         type: 'stop',
         event: event,
         id: childid
       });
-    }else{ 
+    } else {
       this.selecting_connection = true;
-      
+
       this.disableDrag();
 
       this.onConnectionStarted.emit({
@@ -275,23 +273,23 @@ export class SubdraftComponent implements OnInit {
   }
 
 
-openInEditor(event: any){
-  this.onOpenInEditor.emit(this.id);
-}
+  openInEditor(event: any) {
+    this.onOpenInEditor.emit(this.id);
+  }
 
 
   /**
    * called on create to position the element on screen
    * @param pos 
    */
-  setPosition(pos: Point){
-    this.topleft =  {x: pos.x, y:pos.y};
+  setPosition(pos: Point) {
+    this.topleft = { x: pos.x, y: pos.y };
 
-    let sd_container = document.getElementById('scale-'+this.id);
-    if(sd_container == null) return;
+    let sd_container = document.getElementById('scale-' + this.id);
+    if (sd_container == null) return;
     sd_container.style.transform = 'none'; //negate angulars default positioning mechanism
-    sd_container.style.top =  this.topleft.y+"px";
-    sd_container.style.left =  this.topleft.x+"px";
+    sd_container.style.top = this.topleft.y + "px";
+    sd_container.style.left = this.topleft.x + "px";
     this.updateViewport(this.topleft);
   }
 
@@ -299,106 +297,106 @@ openInEditor(event: any){
   /**
    * gets the next z-ndx to place this in front
    */
-  public setAsPreview(){
+  public setAsPreview() {
     this.is_preview = true;
-     this.zndx = this.layer.createLayer();
+    this.zndx = this.layer.createLayer();
   }
 
- 
+
 
   /**
    * does this subdraft exist at this point?
    * @param p the absolute position of the coordinate (based on the screen)
    * @returns true/false for yes or no
    */
-  public hasPoint(p:Point) : boolean{
-    const size = document.getElementById('scale'+this.id)
+  public hasPoint(p: Point): boolean {
+    const size = document.getElementById('scale' + this.id)
 
 
-      const endPosition = {
-        x: this.topleft.x + size.offsetWidth,
-        y: this.topleft.y + size.offsetHeight,
-      };
+    const endPosition = {
+      x: this.topleft.x + size.offsetWidth,
+      y: this.topleft.y + size.offsetHeight,
+    };
 
-      if(p.x < this.topleft.x || p.x > endPosition.x) return false;
-      if(p.y < this.topleft.y || p.y > endPosition.y) return false;
+    if (p.x < this.topleft.x || p.x > endPosition.x) return false;
+    if (p.y < this.topleft.y || p.y > endPosition.y) return false;
 
-    
+
     return true;
 
   }
 
 
-/**
- * Takes row/column position in this subdraft and translates it to an absolution position  
- * @param ndx the index
- * @returns the absolute position as nxy
- */
- public resolveNdxToPoint(ndx:Interlacement) : Point{
-  
-  let y = this.topleft.y + ndx.i * this.scale;
-  let x = this.topleft.x + ndx.j * this.scale;
-  return {x: x, y:y};
+  /**
+   * Takes row/column position in this subdraft and translates it to an absolution position  
+   * @param ndx the index
+   * @returns the absolute position as nxy
+   */
+  public resolveNdxToPoint(ndx: Interlacement): Point {
 
-}
-
-/**
- * Takes an absolute coordinate and translates it to the row/column position Relative to this subdraft
- * @param p the screen coordinate
- * @returns the row and column within the draft (i = row, j=col), returns -1 if out of bounds
- */
-  public resolvePointToNdx(p:Point) : Interlacement{
-    const draft = this.tree.getDraft(this.id);
-
-    let i = Math.floor((p.y -this.topleft.y) / this.scale);
-    let j = Math.floor((p.x - this.topleft.x) / this.scale);
-
-    if(i < 0 || i >= wefts(draft.drawdown)) i = -1;
-    if(j < 0 || j >= warps(draft.drawdown)) j = -1;
-
-    return {i: i, j:j, si: i};
+    let y = this.topleft.y + ndx.i * this.scale;
+    let x = this.topleft.x + ndx.j * this.scale;
+    return { x: x, y: y };
 
   }
 
-  warps(){
+  /**
+   * Takes an absolute coordinate and translates it to the row/column position Relative to this subdraft
+   * @param p the screen coordinate
+   * @returns the row and column within the draft (i = row, j=col), returns -1 if out of bounds
+   */
+  public resolvePointToNdx(p: Point): Interlacement {
+    const draft = this.tree.getDraft(this.id);
+
+    let i = Math.floor((p.y - this.topleft.y) / this.scale);
+    let j = Math.floor((p.x - this.topleft.x) / this.scale);
+
+    if (i < 0 || i >= wefts(draft.drawdown)) i = -1;
+    if (j < 0 || j >= warps(draft.drawdown)) j = -1;
+
+    return { i: i, j: j };
+
+  }
+
+  warps() {
     return warps(this.draft.drawdown)
   }
 
-  wefts(){
+  wefts() {
     return wefts(this.draft.drawdown)
 
   }
 
 
 
-/**
- * takes an absolute reference and returns the value at that cell boolean or null if its unset
- * @param p a point of the absolute poistion of coordinate in question
- * @returns true/false/or null representing the eddle value at this point
- */
-  public resolveToValue(p:Point) : boolean{
+  /**
+   * takes an absolute reference and returns the value at that cell boolean or null if its unset
+   * @param p a point of the absolute poistion of coordinate in question
+   * @returns true/false/or null representing the eddle value at this point
+   */
+  public resolveToValue(p: Point): boolean {
 
     const coords = this.resolvePointToNdx(p);
 
-    if(coords.i < 0 || coords.j < 0) return null; //this out of range
-    
+    if (coords.i < 0 || coords.j < 0) return null; //this out of range
+
     const draft = this.tree.getDraft(this.id);
 
-    if(!draft.drawdown[coords.i][coords.j].is_set) return null;
-    
+    if (!draft.drawdown[coords.i][coords.j].is_set) return null;
+
     return isUp(draft.drawdown, coords.i, coords.j);
-  
+
   }
 
 
-  onDoubleClick(){
+  onDoubleClick() {
     this.draftcontainer.onDoubleClick();
   }
 
 
 
- 
-  redrawExistingDraft(){
+
+  redrawExistingDraft() {
 
     const draft = this.tree.getDraft(this.id);
     this.draftcontainer.draft_visible = this.tree.getDraftVisible(this.id);
@@ -411,10 +409,10 @@ openInEditor(event: any){
 
   calculateDefaultCellSize(draft: Draft): number {
     const num_cells = wefts(draft.drawdown) * warps(draft.drawdown);
-    if(num_cells < 1000) return 10;
-    if(num_cells < 10000) return 8;
-    if(num_cells < 100000)return  5;
-    if(num_cells < 1000000) return  2;
+    if (num_cells < 1000) return 10;
+    if (num_cells < 10000) return 8;
+    if (num_cells < 100000) return 5;
+    if (num_cells < 1000000) return 2;
     return 1;
   }
 
@@ -430,91 +428,91 @@ openInEditor(event: any){
    * previews. Use static for all calculating of intersections, etc. 
    * @returns 
    */
-  getTopleft(): Point{
+  getTopleft(): Point {
     return this.topleft;
   }
 
-    /**
-   * prevents hits on the operation to register as a palette click, thereby voiding the selection
-   * @param e 
-   */
-   mousedown(e: any){
+  /**
+ * prevents hits on the operation to register as a palette click, thereby voiding the selection
+ * @param e 
+ */
+  mousedown(e: any) {
     this.vs.setViewer(this.id);
     e.stopPropagation();
   }
 
-  
 
-  
+
+
 
   //The drag event has handled the on screen view, but internally, we need to track the top left of the element for saving and loading. 
   dragEnd($event: any) {
 
 
     this.moving = false;
-    this.counter = 0;  
-    this.last_ndx = {i: -1, j:-1, si: -1};
+    this.counter = 0;
+    this.last_ndx = { i: -1, j: -1 };
     this.multiselect.setRelativePosition(this.topleft);
-    this.onSubdraftDrop.emit({id: this.id});
+    this.onSubdraftDrop.emit({ id: this.id });
   }
 
-  
 
-  dragStart($event: CdkDragStart){
+
+  dragStart($event: CdkDragStart) {
 
 
     this.moving = true;
     this.offset = null;
-    this.counter = 0;  
-      //set the relative position of this operation if its the one that's dragging
-     if(this.multiselect.isSelected(this.id)){
+    this.counter = 0;
+    //set the relative position of this operation if its the one that's dragging
+    if (this.multiselect.isSelected(this.id)) {
       this.multiselect.setRelativePosition(this.topleft);
-     }else{
+    } else {
       this.multiselect.clearSelections();
-     }
-    this.onSubdraftStart.emit({id: this.id});
- 
+    }
+    this.onSubdraftStart.emit({ id: this.id });
+
 
   }
 
 
-/**
-  this function converts the position of the pointer into the platte coordinate space, it also factors in the top left position so that the 
-  pointer position remains constant within the subdraft
- * @param $event 
- */
+  /**
+    this function converts the position of the pointer into the platte coordinate space, it also factors in the top left position so that the 
+    pointer position remains constant within the subdraft
+   * @param $event 
+   */
   dragMove($event: CdkDragMove) {
 
     let parent = document.getElementById('scrollable-container');
-    let op_container = document.getElementById('scale-'+this.id);
+    let op_container = document.getElementById('scale-' + this.id);
     let rect_palette = parent.getBoundingClientRect();
 
 
-    const zoom_factor =  1/this.zs.getMixerZoom();
- 
+    const zoom_factor = 1 / this.zs.getMixerZoom();
+
     //this gives the position of
     let op_topleft_inscale = {
       x: op_container.offsetLeft,
       y: op_container.offsetTop
     }
 
- 
+
     let scaled_pointer = {
-      x: ($event.pointerPosition.x-rect_palette.x + parent.scrollLeft) * zoom_factor,
-      y: ($event.pointerPosition.y-rect_palette.y+ parent.scrollTop) * zoom_factor,
+      x: ($event.pointerPosition.x - rect_palette.x + parent.scrollLeft) * zoom_factor,
+      y: ($event.pointerPosition.y - rect_palette.y + parent.scrollTop) * zoom_factor,
     }
 
 
 
-      if(this.offset == null){
+    if (this.offset == null) {
 
-        this.offset = {
-          x: scaled_pointer.x - op_topleft_inscale.x,
-          y: scaled_pointer.y - op_topleft_inscale.y
-        }
-        //console.log("LEFT WITH SCALE VS, LEFT POINTER ", op_topleft_inscale, scaled_pointer, this.offset);
-
+      this.offset = {
+        x: scaled_pointer.x - op_topleft_inscale.x,
+        y: scaled_pointer.y - op_topleft_inscale.y
       }
+      //console.log("LEFT WITH SCALE VS, LEFT POINTER ", op_topleft_inscale, scaled_pointer, this.offset);
+
+    }
 
 
     this.topleft = {
@@ -523,20 +521,20 @@ openInEditor(event: any){
 
     }
     op_container.style.transform = 'none'; //negate angulars default positioning mechanism
-    op_container.style.top =  this.topleft.y+"px";
-    op_container.style.left =  this.topleft.x+"px";
+    op_container.style.top = this.topleft.y + "px";
+    op_container.style.left = this.topleft.x + "px";
 
 
 
-    this.onSubdraftMove.emit({id: this.id, point: this.topleft});
+    this.onSubdraftMove.emit({ id: this.id, point: this.topleft });
 
   }
 
-  disableDrag(){
+  disableDrag() {
     this.disable_drag = true;
   }
 
-  enableDrag(){
+  enableDrag() {
     this.disable_drag = false;
   }
 
@@ -547,8 +545,8 @@ openInEditor(event: any){
   //   this.onSubdraftViewChange.emit(this.id);
   // }
 
-  connectionClicked(id:number){
-    this.has_active_connection  = true;
+  connectionClicked(id: number) {
+    this.has_active_connection = true;
     // if(this.active_connection_order === 0){
     //   this.onConnectionMade.emit(id);
     // }else{
@@ -558,33 +556,33 @@ openInEditor(event: any){
 
   }
 
-  resetConnections(){
+  resetConnections() {
     this.has_active_connection = false;
   }
 
 
 
-  private designAction(e){
+  private designAction(e) {
 
     let event = e.event;
     let id = e.id;
 
-    switch(event){
-      case 'duplicate':   
-      this.onDuplicateCalled.emit({id});
-      break;
+    switch (event) {
+      case 'duplicate':
+        this.onDuplicateCalled.emit({ id });
+        break;
 
-      case 'delete': 
-        this.onDeleteCalled.emit({id});
-      break;
+      case 'delete':
+        this.onDeleteCalled.emit({ id });
+        break;
 
-      case 'edit': 
-      this.onDesignAction.emit({id});
-      break;
+      case 'edit':
+        this.onDesignAction.emit({ id });
+        break;
 
-      default: 
-        this.onDesignAction.emit({id});
-      break;
+      default:
+        this.onDesignAction.emit({ id });
+        break;
 
     }
   }

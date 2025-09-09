@@ -1,6 +1,6 @@
 import { Injectable, NgZone, inject } from '@angular/core';
 import { Auth, authState, getAuth } from '@angular/fire/auth';
-import { get as fbget, getDatabase, onChildAdded, onChildRemoved, onDisconnect, onValue, orderByChild, update, ref as fbref, ref, remove, query, onChildChanged, set } from '@angular/fire/database';
+import { get as fbget, onChildAdded, onChildRemoved, onDisconnect, onValue, orderByChild, update, ref as fbref, ref, remove, query, onChildChanged, set } from '@angular/fire/database';
 import { Observable, Subject } from 'rxjs';
 import { FilebrowserComponent } from '../ui/filebrowser/filebrowser.component';
 import { SaveObj, ShareObj } from '../model/datatypes';

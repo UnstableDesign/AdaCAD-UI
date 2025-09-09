@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
+import { LoomSettings } from 'adacad-drafting-lib/loom';
 import { defaults } from '../model/defaults';
-import { LoomSettings } from 'adacad-drafting-lib/objects/datatypes.ts';
 
 @Injectable({
   providedIn: 'root'
@@ -14,7 +14,7 @@ export class WorkspaceService {
 
 
   file_favorites: Array<number> = [];
-  min_frames: number = defaults.loom_settings.frames; 
+  min_frames: number = defaults.loom_settings.frames;
   min_treadles: number = defaults.loom_settings.treadles;
   type: string = defaults.loom_settings.type; //'rigid', 'direct', 'frame', 'jacquard'
   epi: number = defaults.loom_settings.epi;
@@ -23,7 +23,7 @@ export class WorkspaceService {
   show_materials: boolean = defaults.show_materials;
   black_cell_up: boolean = defaults.black_cell_up;
   number_threading: boolean = defaults.number_threading;
-  
+
   hide_mixer_drafts: boolean = defaults.hide_mixer_drafts;
   show_advanced_operations: boolean = defaults.show_advanced_operations;
   /**
@@ -42,10 +42,10 @@ export class WorkspaceService {
   constructor() { }
 
 
-  getWorkspaceLoomSettings() : LoomSettings{
-    const ls:LoomSettings = {
+  getWorkspaceLoomSettings(): LoomSettings {
+    const ls: LoomSettings = {
       type: this.type,
-      epi: this.epi, 
+      epi: this.epi,
       frames: this.min_frames,
       treadles: this.min_treadles,
       units: this.units
@@ -54,12 +54,12 @@ export class WorkspaceService {
   }
 
 
-  initDefaultWorkspace(){
-    this.min_frames = defaults.loom_settings.frames; 
+  initDefaultWorkspace() {
+    this.min_frames = defaults.loom_settings.frames;
     this.min_treadles = defaults.loom_settings.treadles;
     this.type = defaults.loom_settings.type; //'rigid', 'direct', 'frame', 'jacquard'
     this.epi = defaults.loom_settings.epi;
-    this.units = <'in'|'cm'>defaults.loom_settings.units;
+    this.units = <'in' | 'cm'>defaults.loom_settings.units;
     this.show_materials = defaults.show_materials;
     this.black_cell_up = defaults.black_cell_up;
     this.number_threading = defaults.number_threading;
@@ -69,8 +69,8 @@ export class WorkspaceService {
 
   }
 
-  loadWorkspace(data){
-    this.min_frames = data.min_frames; 
+  loadWorkspace(data) {
+    this.min_frames = data.min_frames;
     this.min_treadles = data.min_treadles;
     this.type = data.type;
     this.epi = data.epi;
@@ -85,8 +85,8 @@ export class WorkspaceService {
   }
 
 
-  isFrame() : boolean{
-    if(this.type === 'frame') return true;
+  isFrame(): boolean {
+    if (this.type === 'frame') return true;
     return false;
   }
 
@@ -127,9 +127,9 @@ export class WorkspaceService {
   //   return "done";
   // }
 
-  exportWorkspace() : any{
+  exportWorkspace(): any {
     return {
-      min_frames: this.min_frames, 
+      min_frames: this.min_frames,
       min_treadles: this.min_treadles,
       type: this.type,
       epi: this.epi,
@@ -144,18 +144,18 @@ export class WorkspaceService {
     }
   }
 
-  toggleFavorite(id: number){
+  toggleFavorite(id: number) {
     const found = this.file_favorites.find(el => el === id);
-    if(found){
+    if (found) {
       this.file_favorites = this.file_favorites.filter(el => el !== id)
-    }else{
+    } else {
       this.file_favorites.push(id);
     }
   }
 
-  isFavorite(id: number):boolean{
+  isFavorite(id: number): boolean {
     const found = this.file_favorites.find(el => el === id);
-    if(found === undefined) return false;
+    if (found === undefined) return false;
     else return true;
   }
 
