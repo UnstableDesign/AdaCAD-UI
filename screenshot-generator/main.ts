@@ -13,9 +13,12 @@ const screenshotsProcessedDir = path.join(screenshotsDir, 'processed');
 // note this padding is just for the top and bottom of the image
 let verticalCropPadding = 20;
 
-async function main() {
+type FileEntry = { path: string; name: string; extension: string };
 
-  // optional args 
+main().catch(console.error);
+
+async function main() {
+  // optional args
   const skipScreenshots = process.argv.includes('--skip-screenshots');
   const skipCropping = process.argv.includes('--skip-cropping');
 
@@ -25,7 +28,12 @@ async function main() {
   }
 
   const filterFiles = process.argv.find(arg => arg.startsWith('--filter='));
-  const filterFileNames: Array<string> = filterFiles ? filterFiles.split('=')[1].split(',').map(name => name.trim()) : [];
+  const filterFileNames: Array<string> = filterFiles
+    ? filterFiles
+        .split('=')[1]
+        .split(',')
+        .map(name => name.trim())
+    : [];
 
   const paddingArg = process.argv.find(arg => arg.startsWith('--padding='));
   if (paddingArg) {
@@ -79,6 +87,7 @@ async function captureScreenshots(specificAdaFilesToCapture: Array<string>) {
   // inject CSS to:
   // 1. remove the "added to workspace" animation that is on the component titles
   // 2. remove the side nav drag button that appears on the top left of the viewport otherwise
+  // 3. remove the black overlay fade animation
   await page.evaluate(async () => {
     const style = document.createElement('style');
     style.type = 'text/css';
@@ -89,6 +98,10 @@ async function captureScreenshots(specificAdaFilesToCapture: Array<string>) {
 
       .sidenav_mover {
         visibility: hidden !important;
+      }
+
+      .black-overlay.stable {
+        animation: unset !important;
       }
     `;
     style.appendChild(document.createTextNode(content));
@@ -102,30 +115,36 @@ async function captureScreenshots(specificAdaFilesToCapture: Array<string>) {
 
   // get all files in directory
   console.log('loading all .ada documentation files');
-  const allSubFolders = fs.readdirSync(documentationDirectory);
-  const allAdaFiles = allSubFolders
-    .map(folder => fs.readdirSync(documentationDirectory + folder)
-      .map((adaFile) => documentationDirectory + folder + '/' + adaFile))
-    .reduce((a, c) => [...a, ...c]);
+  const allAdaFiles = getAdaFiles(documentationDirectory);
 
   console.log(`found ${allAdaFiles.length} .ada files`);
 
   // apply the optional --filter arg if it was provided
-  const filteredAdaFiles = specificAdaFilesToCapture.length > 0
-    ? allAdaFiles.filter(file => specificAdaFilesToCapture.findIndex(name => file.startsWith(name)) > -1)
-    : allAdaFiles;
+  const filteredAdaFiles =
+    specificAdaFilesToCapture.length > 0
+      ? allAdaFiles.filter(file => specificAdaFilesToCapture.findIndex(name => file.path.startsWith(name)) > -1)
+      : allAdaFiles;
 
   if (allAdaFiles.length > filteredAdaFiles.length) {
     console.log('filter applied, capturing file count: ' + filteredAdaFiles.length);
   }
 
   let i = 1;
-  for (let filePath of filteredAdaFiles) {
-    process.stdout.write('processing file #' + i++ + '\r');
-    const adaFile = fs.readFileSync(filePath, 'utf8');
-    const jsonAdaFile = JSON.parse(adaFile);
+  const parseErrors: { file: FileEntry; error: string }[] = [];
 
-    await page.evaluate(async (adaFile) => {
+  for (let file of filteredAdaFiles) {
+    process.stdout.write('processing file #' + i++ + '\r');
+
+    let jsonAdaFile: string;
+    try {
+      const adaFileContents = fs.readFileSync(file.path, 'utf8');
+      jsonAdaFile = JSON.parse(adaFileContents);
+    } catch (error) {
+      parseErrors.push({ file, error });
+      continue;
+    }
+
+    await page.evaluate(async adaFile => {
       await (window as any).loadAdaFileJson(adaFile);
       // we have to wait awhile for each one, because it takes time to load
       // the save state, and we sometimes see the loading modal pop up
@@ -136,8 +155,14 @@ async function captureScreenshots(specificAdaFilesToCapture: Array<string>) {
     }, jsonAdaFile);
 
     const mainView = await page.waitForSelector('app-palette');
-    const componentName = filePath.split('/')[3].replace('.ada', '');
-    await mainView.screenshot({ path: path.join(screenshotsRawDir, componentName) + '.png' as `${string}.png` }); // TS doesn't like this w/o the cast
+    await mainView.screenshot({
+      path: (path.join(screenshotsRawDir, file.name) + '.png') as `${string}.png`,
+    }); // TS doesn't like this w/o the cast
+  }
+
+  if (parseErrors.length > 0) {
+    console.log(`\nfailed to parse ${parseErrors.length} file(s):`);
+    parseErrors.forEach(({ file, error }) => console.log(`  ${file.path}: ${error}`));
   }
 
   console.log();
@@ -151,9 +176,10 @@ async function captureScreenshots(specificAdaFilesToCapture: Array<string>) {
 async function cropScreenshots(specificImagesToCrop: Array<string>) {
   const imageFileNames = fs.readdirSync(screenshotsRawDir);
 
-  const filteredImageFiles = specificImagesToCrop.length > 0
-    ? imageFileNames.filter(file => specificImagesToCrop.findIndex(name => file.startsWith(name)) > -1)
-    : imageFileNames;
+  const filteredImageFiles =
+    specificImagesToCrop.length > 0
+      ? imageFileNames.filter(file => specificImagesToCrop.findIndex(name => file.startsWith(name)) > -1)
+      : imageFileNames;
 
   if (imageFileNames.length > filteredImageFiles.length) {
     console.log('filter applied, matching image file count: ' + filteredImageFiles.length);
@@ -171,20 +197,29 @@ async function cropScreenshots(specificImagesToCrop: Array<string>) {
     const threshold = 230;
 
     // scan the image to figure out the top and bottom of the ada components
-    const hits: Array<Array<number> | null> = Array.from({ length: Math.floor(width / 10) })
-      .map((_, x) => Array.from({ length: height }).map((_, y) => {
-        const i = (y * width + (x * 10)) * channels;
-        const rgb = [data[i], data[i + 1], data[i + 2]];
-        const avg = rgb.reduce((a, c) => a + c, 0) / 3;
-        return avg < threshold ? [x, y] : null;
-      })).reduce((a, c) => [...a, ...c]).filter(Boolean);
+    const hits: Array<Array<number> | null> = Array.from({
+      length: Math.floor(width / 10),
+    })
+      .map((_, x) =>
+        Array.from({ length: height }).map((_, y) => {
+          const i = (y * width + x * 10) * channels;
+          const rgb = [data[i], data[i + 1], data[i + 2]];
+          const avg = rgb.reduce((a, c) => a + c, 0) / 3;
+          return avg < threshold ? [x, y] : null;
+        }),
+      )
+      .reduce((a, c) => [...a, ...c])
+      .filter(Boolean);
 
-    const bounds = hits.reduce((acc, hit) => {
-      return {
-        minY: Math.min(acc.minY, hit[1]),
-        maxY: Math.max(acc.maxY, hit[1])
-      };
-    }, { minY: height, maxY: 0 });
+    const bounds = hits.reduce(
+      (acc, hit) => {
+        return {
+          minY: Math.min(acc.minY, hit[1]),
+          maxY: Math.max(acc.maxY, hit[1]),
+        };
+      },
+      { minY: height, maxY: 0 },
+    );
 
     // add padding
     const top = Math.max(bounds.minY - verticalCropPadding, 0);
@@ -203,5 +238,30 @@ async function cropScreenshots(specificImagesToCrop: Array<string>) {
   console.log('completed cropping');
 }
 
-main().catch(console.error);
+const collectFilesRecursive = (directory: string): FileEntry[] => {
+  const entries = fs.readdirSync(directory, { withFileTypes: true });
 
+  return entries.flatMap((entry): FileEntry[] => {
+    const fullPath = path.join(directory, entry.name);
+
+    if (entry.isDirectory()) {
+      return collectFilesRecursive(fullPath);
+    }
+
+    if (entry.isFile()) {
+      const ext = path.extname(entry.name);
+      return [
+        {
+          path: fullPath,
+          name: path.basename(entry.name, ext),
+          extension: ext,
+        },
+      ];
+    }
+
+    return [];
+  });
+};
+
+const getAdaFiles = (directory: string): FileEntry[] =>
+  collectFilesRecursive(directory).filter(f => f.extension === '.ada');
